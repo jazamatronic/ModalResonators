@@ -30,20 +30,21 @@ MAGENTA = MIDI page:
 &nbsp;&nbsp;CC 7 (Volume) = gain  
 &nbsp;&nbsp;CC 70 = stiffness  
 &nbsp;&nbsp;CC 71 = beta (harmonics control)  
-&nbsp;&nbsp;CC 71 = MGF (mode gain factor)  
+&nbsp;&nbsp;CC 74 = MGF (mode gain factor)  
   
 RED = Input Filter / Gain page:  
 &nbsp;&nbsp;POT1 = Input Filter (1 pole) Cutoff - simulates strike/pluck hardness  
 &nbsp;&nbsp;POT2 = Gain  
   
 GREEN = Stiffness / Beta page:  
-&nbsp;&nbsp;POT1 = Stiffness (spreads higher modes) 
+&nbsp;&nbsp;POT1 = Stiffness (spreads higher modes)  
 &nbsp;&nbsp;POT2 = Beta (controls harmonic content)  
   
 BLUE = MGF page:  
 &nbsp;&nbsp;POT1 = MGF (Brightness - boosts or cuts higher modes)
   
 Button 2 toggles between ping or external input mode  
+  
 LED2 = CYAN  
 &nbsp;&nbsp;Ping mode, each note is excited by a single ping  
 LED2 = OFF  
