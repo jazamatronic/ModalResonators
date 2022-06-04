@@ -6,12 +6,13 @@
 #define MAX_R 0.99999
 
 #define CLAMP(x, min, max)  (x > max) ? max : ((x < min) ? min : x)
-//#define SGN(x)		    (x > 0) ? 1 : ((x < 0) ? -1 : 0)
-#define SGN(x)		    signbit(x) ? -1 : 1
+#define SGN(x)		    (x > 0) ? 1.0 : ((x < 0) ? -1.0 : 0)
+//#define SGN(x)		    signbit(x) ? -1.0 : 1.0
 
 #include <stdint.h>
 #include "arm_math.h"
 #include "iir_reson.h"
+#include "iir_1p_lp.h"
 #ifdef __cplusplus
 
 namespace daisysp
@@ -30,7 +31,7 @@ class modal_note
     ~modal_note() { delete[] modes; }
 
     void init(float fs, float fc, float r, float gdb = 0, float stiffness = 0.00001, int beta = 2, 
-	      float mgf = 0, float mrf = 0)
+	      float mgf = 0, float mrf = 0, float ifc = 220)
     {
       fs_ = fs;
       fc_ = fc;
@@ -61,16 +62,19 @@ class modal_note
 	calculated_modes++;
       }
       n_modes_ = calculated_modes;
+
+      input_filt.init(fs_, ifc);
     }
 
     float Process(float in)
     {
       float out = 0;
+      float in_filt = input_filt.Process(in);
       for (int i = 0; i < n_modes_; i++) {
-	out += modes[i].Process(in) / n_modes_;
+        out += modes[i].Process(in_filt) / n_modes_;
       }
       //return SGN(out) * (1 - expf(-fabsf(out))); // Holy distortion Batman - what's going on here?
-      return CLAMP(out, -1, 1);
+      return CLAMP(out, -1.0, 1.0);
     }
 
     void update_fc(float fc)
@@ -133,6 +137,50 @@ class modal_note
       }
     }
 
+    void update_stiffness(float stiffness)
+    {
+      if (stiffness != stiffness_) {
+	stiffness_ = stiffness;
+
+	int calculated_modes = 0;
+	for (int i = 0; calculated_modes < n_modes_; i++) {
+  
+	  // skip modes defined by beta
+  	  if (fmod(i, beta_) == 0) continue;
+  	  
+  	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
+  	  // dont alias
+  	  if (mode_f > (fs_ / 2)) break;
+
+      	  modes[calculated_modes].update_fc(mode_f);
+      	  calculated_modes++;
+	}
+      }
+    }
+
+    void update_beta(int beta)
+    {
+      if (beta != beta_) {
+	beta_ = beta;
+
+	int calculated_modes = 0;
+      	for (int i = 0; calculated_modes < n_modes_; i++) {
+
+      	  // skip modes defined by beta
+      	  if (fmod(i, beta_) == 0) continue;
+
+      	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
+
+      	  // dont alias
+      	  if (mode_f > (fs_ / 2)) break;
+
+      	  modes[calculated_modes].update_fc(mode_f);
+      	  calculated_modes++;
+      	}
+      }
+    }
+
+
 
     void update_mgf(float mgf)
     {
@@ -152,14 +200,19 @@ class modal_note
       }
     }
 
+    void update_ifc(float ifc)
+    {
+      input_filt.update_fc(ifc);
+    }
+
     /* TODO:
-     * Add a way to change the note, either fc, r or g
      * Add chords
      */
 
   private:
     int n_modes_;
     iir_reson *modes;
+    iir_1p_lp input_filt;
     float fs_, fc_, r_, gdb_, g_, stiffness_, mgf_, mrf_;
     int beta_;
 

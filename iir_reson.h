@@ -37,7 +37,8 @@ class iir_reson : public dumb_biquad
   {
     fs_ = fs;
     fc_ = fc;
-    wc_ = 2 * PI * fc_ / fs_;
+    to_wc_ = 2 * PI / fs_; 
+    wc_ = to_wc_ * fc_;
     r_  = r;
     g_  = g;
 
@@ -58,7 +59,7 @@ class iir_reson : public dumb_biquad
   {
     if (fc != fc_) {
       fc_ = fc;
-      wc_ = 2 * PI * fc_ / fs_;
+      wc_ = to_wc_ * fc_;
       a[0] = -2 * r_ * cos(wc_);
     }
   }
@@ -67,7 +68,7 @@ class iir_reson : public dumb_biquad
   {
     if (r != r_) {
       r_ = r;
-      wc_ = 2 * PI * fc_ / fs_;
+      wc_ = to_wc_ * fc_;
       a[0] = -2 * r_ * cos(wc_);
       a[1] = r_ * r_;
       b[0] = g_ * r_;
@@ -85,7 +86,7 @@ class iir_reson : public dumb_biquad
   }
 
   private:
-    float fs_, fc_, wc_, r_, g_;
+    float fs_, fc_, wc_, r_, g_, to_wc_;
 };
 } // namespace daisysp
 #endif
