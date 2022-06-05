@@ -49,8 +49,8 @@ LED2 = OFF
 &nbsp;&nbsp;Ping mode, each note is excited by a single ping  
 LED2 = CYAN  
 &nbsp;&nbsp;Left input channel is fed into each note
-&nbsp;&nbsp;*CAUTION* This can blow up under high resonances - keep the gain down and bring it up slowly
+&nbsp;&nbsp;*CAUTION* This can blow up under high resonances - keep the gain down and bring it up slowly  
 LED2 = YELLOW  
-&nbsp;&nbsp;Inharmonic mode - currently only one single preset. Resonance can be modulated with the MOD WHEEL
-&nbsp;&nbsp;Input filter cutoff can be adjusted by turning POT1 on the RED page
+&nbsp;&nbsp;Inharmonic mode - currently only one single preset. Resonance can be modulated with the MOD WHEEL  
+&nbsp;&nbsp;Input filter cutoff can be adjusted by turning POT1 on the RED page  
 
