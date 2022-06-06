@@ -4,7 +4,6 @@
 #include "modal_inharm.h"
 
 #define  NUM_HARM_PARTIALS    4
-#define  NUM_INHARM_PARTIALS  5
 #define  NUM_NOTES     5
 #define  PING_AMT      1 //0.25 
 
@@ -15,13 +14,16 @@
 #define IFC_MIN   10
 #define IFC_MAX   22000
 #define GAIN_MIN  0
-#define GAIN_MAX  5
+#define GAIN_MAX  10 
 #define STIFF_MIN 0
-#define STIFF_MAX 0.05 
+#define STIFF_MAX 0.005 
 #define BETA_MIN  2
 #define BETA_MAX  5
 #define MGF_MIN	  -1
 #define MGF_MAX   3
+
+#define CLAMP(x, min, max)  (x > max) ? max : ((x < min) ? min : x)
+#define SGN(x)		    (signbit(x) ? -1.0 : 1.0)
 
 #define CC_TO_VAL(x, min, max) (min + (x / 127.0f) * (max - min))
 #define POT_TO_VAL(x, min, max) (min + x * (max - min))
@@ -32,6 +34,10 @@
 #define  CC_STIFF      70
 #define  CC_BETA       71
 #define  CC_MGF	       74
+
+// For distortion models
+#define INV_ARCTAN_1 1.273239544735163
+#define INV_TANH_1   1.313035285499331
 
 using namespace daisy;
 using namespace daisysp;
@@ -46,17 +52,19 @@ int  blink_cnt = 0;
 bool led_state = true;
 
 static Parameter knob1_lin, knob1_log, knob2_lin, knob2_log;
-float cur_ifc, cur_g, cur_stiff, cur_beta, cur_mgf, cur_mrf = 0;
+float cur_ifc, cur_g, cur_stiff, cur_beta, cur_mgf, cur_mrf, cur_out;
 
 int midi_f = 0;
 int next_note = 0;
 bool play_note = false;
 
-typedef enum {MIDI = 0, IFC_GAIN, STIFF_BETA, MGF_MRF, LAST_PAGE} ui_page;
+typedef enum {MIDI = 0, GAIN_OUT, STIFF_BETA, IFC_MGF, LAST_PAGE} ui_page;
 ui_page cur_page = MIDI;
 typedef enum {PING = 0, EXT, INHARM, LAST_MODE} ui_mode;
 ui_mode cur_mode = PING;
-bool ping_mode = true;
+typedef enum {NONE = 0, EXP_DIST, TANH, ARCTAN, LAST_OUTPUT} ui_output_mode;
+ui_output_mode cur_output_mode = NONE;
+int cur_preset = 0;
 
 
 void UpdateEncoder();
@@ -90,6 +98,23 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 	    }
 	  }
 
+	  // no effort made here to avoid aliasing due to harmonics introduced by waveshaping/clipping
+	  switch(cur_output_mode) {
+	    case NONE:
+	      break;
+	    case EXP_DIST:
+	      to_out = SGN(to_out) * (1 - expf(-fabsf(to_out))); // Holy distortion Batman - what's going on here?
+	      break;
+	    case TANH:
+	      to_out = tanhf(to_out) * INV_TANH_1;
+	      break;
+	    case ARCTAN:
+	      to_out = atanf(to_out) * INV_ARCTAN_1;
+	      break;
+	    default:
+	      break;
+	  }
+
 	  out[0][i] = to_out;
 	  out[1][i] = to_out;
 	} 
@@ -117,7 +142,7 @@ void HandleMidiMessage(MidiEvent m) {
 	      case CC_MOD: 
 		{
 		  if (cur_mode == INHARM) {
-		    float new_res = CC_TO_VAL(p.value, 0, 1);
+		    float new_res = CC_TO_VAL(p.value, -1, 1);
 		    for (int i = 0; i < NUM_NOTES; i++) {
 		      inharms[i]->modulate_r(new_res);
 		    }
@@ -183,24 +208,22 @@ void UpdateEncoder()
 
   cur_page = (ui_page)(cur_page + hw.encoder.Increment());
   if (cur_page >= LAST_PAGE) { cur_page = MIDI; }
-  //MIDI, IFC_GAIN, STIFF_BETA, MGF_MRF, LAST
   switch(cur_page)
   {
     case MIDI:
       // disable controls
       hw.led1.Set(0.7f, 0, 0.7f);
       break;
-    case IFC_GAIN:
+    case GAIN_OUT:
       {
-	cur_ifc = CatchParam(cur_ifc, knob1_log.Process(), CATCH_THRESH);
-	float new_ifc = POT_TO_VAL(cur_ifc, IFC_MIN, IFC_MAX);
-	cur_g = CatchParam(cur_g, knob2_log.Process(), CATCH_THRESH);
+	cur_g = CatchParam(cur_g, knob1_log.Process(), CATCH_THRESH);
 	float new_g = POT_TO_VAL(cur_g, GAIN_MIN, GAIN_MAX);
+	cur_out = CatchParam(cur_out, knob2_lin.Process(), CATCH_THRESH);
+	cur_output_mode = (ui_output_mode)roundf(cur_out * (LAST_OUTPUT - 1));
 	for (int i = 0; i < NUM_NOTES; i++) {
 	  if (cur_mode == INHARM) {
-	    inharms[i]->update_ifc(new_ifc);
+	    inharms[i]->modulate_g(new_g);
 	  } else {
-	    notes[i]->update_ifc(new_ifc);
 	    notes[i]->update_g(new_g);
 	  }
 	}
@@ -220,12 +243,19 @@ void UpdateEncoder()
 	hw.led1.Set(0, 1.0f, 0);
 	break;
       }
-    case MGF_MRF:
+    case IFC_MGF:
       {
-	cur_mgf = CatchParam(cur_mgf, knob1_log.Process(), CATCH_THRESH);
+	cur_ifc = CatchParam(cur_ifc, knob1_log.Process(), CATCH_THRESH);
+	float new_ifc = POT_TO_VAL(cur_ifc, IFC_MIN, IFC_MAX);
+	cur_mgf = CatchParam(cur_mgf, knob2_log.Process(), CATCH_THRESH);
 	float new_mgf = POT_TO_VAL(cur_mgf, MGF_MIN, MGF_MAX);
 	for (int i = 0; i < NUM_NOTES; i++) {
-	  notes[i]->update_mgf(new_mgf);
+	  if (cur_mode == INHARM) {
+	    inharms[i]->update_ifc(new_ifc);
+	  } else {
+	    notes[i]->update_mgf(new_mgf);
+	    notes[i]->update_ifc(new_ifc);
+	  }
 	}
 	hw.led1.Set(0, 0, 1.0f);
 	break;
@@ -236,24 +266,33 @@ void UpdateEncoder()
 
 void UpdateButtons()
 {
+  if(hw.button1.RisingEdge()) {
+    if (++cur_preset == NUM_INHARM_PRESETS) {
+      cur_preset = 0;
+    }
+    for (int i = 0; i < NUM_NOTES; i++) {
+      inharms[i]->load_preset(&inharm_presets[cur_preset]);
+    }
+  }
+
   if(hw.button2.RisingEdge()) {
     cur_mode = (ui_mode)(cur_mode + 1);
       if (cur_mode >= LAST_MODE) {
 	cur_mode = PING;
       }
-  }
-  switch(cur_mode) {
-    case PING:
-      hw.led2.Set(0, 0, 0);
-      break;
-    case EXT:
-      hw.led2.Set(0, 0.7, 0.7);
-      break;
-    case INHARM:
-      hw.led2.Set(0.7, 0.7, 0);
-      break;
-    default:
-      break;
+    switch(cur_mode) {
+      case PING:
+        hw.led2.Set(0, 0, 0);
+        break;
+      case EXT:
+        hw.led2.Set(0, 0.7, 0.7);
+        break;
+      case INHARM:
+        hw.led2.Set(0.7, 0.7, 0);
+        break;
+      default:
+        break;
+    }
   }
 }
 
@@ -264,27 +303,34 @@ int main(void)
 	hw.Init();
 	float sr = hw.AudioSampleRate();
 
-	float these_modes[] = {1.0, 1.58, 2.0, 2.24, 2.92};
-	float these_gains[] = {1, 1, 1, 1, 1};
-	float these_res[] = {0.9997, 0.9997, 0.9997, 0.9997, 0.9997};
 	for (int i = 0; i < NUM_NOTES; i++) {
 	  notes[i] = new modal_note(NUM_HARM_PARTIALS);
 	  notes[i]->init(sr, 45, 0.9999);
 	  inharms[i] = new modal_inharm(NUM_INHARM_PARTIALS);
-	  inharms[i]->init(sr, 45, 5, these_modes, these_gains, these_res);
+	  inharms[i]->init(sr, 45, &inharm_presets[cur_preset]);
 	}
 
-	knob1_lin.Init(hw.knob1, 0, 1, knob1_lin.LINEAR); 
-	knob1_log.Init(hw.knob1, 0, 1, knob1_log.EXPONENTIAL); 
-	knob2_lin.Init(hw.knob2, 0, 1, knob2_lin.LINEAR); 
-	knob2_log.Init(hw.knob2, 0, 1, knob2_log.EXPONENTIAL); 
+	knob1_lin.Init(hw.knob1, 0.0f, 1.0f, knob1_lin.LINEAR); 
+	knob1_log.Init(hw.knob1, 0.0f, 1.0f, knob1_log.EXPONENTIAL); 
+	knob2_lin.Init(hw.knob2, 0.0f, 1.0f, knob2_lin.LINEAR); 
+	knob2_log.Init(hw.knob2, 0.0f, 1.0f, knob2_log.EXPONENTIAL); 
 
 	hw.led1.Set(0.7f, 0, 0.7f); // MIDI MODE
 	hw.led2.Set(0 ,0.7f, 0.7f); // PING MODE
 
+	UpdateButtons();
+	UpdateEncoder();
+	cur_g = 0.5;
+	cur_page = MIDI;
+	cur_mode = PING;
+	cur_output_mode = NONE;
+	cur_preset = 0;
+        hw.led2.Set(0, 0, 0);
+
 	hw.StartAdc();
 	hw.StartAudio(AudioCallback);
 	hw.midi.StartReceive();
+
 
 	while(1) {
 	  blink_cnt &= blink_mask;

@@ -3,11 +3,15 @@
 #define DSY_MODAL_NOTE_H
 
 // Maximum resonance - let's try and keep things stable
-#define MAX_R 0.99999
+#define RES_MAX 0.99999
+
+#define DEFAULT_GDB   0
+#define DEFAULT_STIFF 0.00001
+#define DEFAULT_BETA  2
+#define DEFAULT_MGF   0
+#define DEFAULT_IFC   10
 
 #define CLAMP(x, min, max)  (x > max) ? max : ((x < min) ? min : x)
-#define SGN(x)		    (x > 0) ? 1.0 : ((x < 0) ? -1.0 : 0)
-//#define SGN(x)		    signbit(x) ? -1.0 : 1.0
 
 #include <stdint.h>
 #include "arm_math.h"
@@ -30,18 +34,17 @@ class modal_note
     modal_note(int n) :n_modes_{n}, modes{new iir_reson[n]} {}
     ~modal_note() { delete[] modes; }
 
-    void init(float fs, float fc, float r, float gdb = 0, float stiffness = 0.00001, int beta = 2, 
-	      float mgf = 0, float mrf = 0, float ifc = 220)
+    void init(float fs, float fc, float r)
     {
       fs_ = fs;
       fc_ = fc;
       r_ = r;
-      gdb_ = gdb;
+      gdb_ = DEFAULT_GDB;
       g_ = powf(10, gdb_ / 20.0);
-      stiffness_ = stiffness;
-      beta_ = beta;
-      mgf_ = mgf;
-      mrf_ = mrf;
+      stiffness_ = DEFAULT_STIFF;
+      beta_ = DEFAULT_BETA;
+      mgf_ = DEFAULT_MGF;
+      mrf_ = 0;
 
       int calculated_modes = 0;
       for (int i = 0; calculated_modes < n_modes_; i++) {
@@ -58,12 +61,12 @@ class modal_note
 	float mode_r = r_ - i * mrf_;
 	if (mode_r < 0) mode_r = 0;
 
-	modes[calculated_modes].init(fs_, mode_f, CLAMP(mode_r, 0, MAX_R), mode_g);
+	modes[calculated_modes].init(fs_, mode_f, CLAMP(mode_r, 0, RES_MAX), mode_g);
 	calculated_modes++;
       }
       n_modes_ = calculated_modes;
 
-      input_filt.init(fs_, ifc);
+      input_filt.init(fs_, DEFAULT_IFC);
     }
 
     float Process(float in)
@@ -73,8 +76,8 @@ class modal_note
       for (int i = 0; i < n_modes_; i++) {
         out += modes[i].Process(in_filt) / n_modes_;
       }
-      //return SGN(out) * (1 - expf(-fabsf(out))); // Holy distortion Batman - what's going on here?
-      return CLAMP(out, -1.0, 1.0);
+      // Let's do any clamping after summing in the top level
+      return out;
     }
 
     void update_fc(float fc)
