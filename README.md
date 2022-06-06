@@ -55,4 +55,9 @@ LED2 = YELLOW
 &nbsp;&nbsp;Inharmonic mode - 10 presets available, cycle through with Button 1.  
 &nbsp;&nbsp;Resonance can be modulated with the MOD WHEEL  
 &nbsp;&nbsp;Input filter cutoff can be adjusted by turning POT1 on the BLUE page  
+  
+  
+Demo / feature walkthrough available click here:  
+[![ModalResonators Demo](https://img.youtube.com/vi/S-_UZKW8978/0.jpg)](https://www.youtube.com/watch?v=S-_UZKW8978 "ModalResonators Demo")
+
 
