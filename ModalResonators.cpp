@@ -2,6 +2,8 @@
 #include "daisysp.h"
 #include "modal_note.h"
 #include "modal_inharm.h"
+#include "crc_noise.h"
+#include "led_colours.h"
 
 #define  NUM_HARM_PARTIALS    4
 #define  NUM_NOTES     5
@@ -21,6 +23,8 @@
 #define BETA_MAX  5
 #define MGF_MIN	  -1
 #define MGF_MAX   3
+#define ENV_MIN	  0.001
+#define ENV_MAX	  0.1
 
 #define CLAMP(x, min, max)  (x > max) ? max : ((x < min) ? min : x)
 #define SGN(x)		    (signbit(x) ? -1.0 : 1.0)
@@ -33,6 +37,8 @@
 #define  CC_GAIN       7
 #define  CC_STIFF      70
 #define  CC_BETA       71
+#define  CC_REL        72
+#define  CC_ATK        73
 #define  CC_MGF	       74
 
 // For distortion models
@@ -44,23 +50,27 @@ using namespace daisysp;
 
 DaisyPod hw;
 
+
 modal_note *notes[NUM_NOTES];
 modal_inharm *inharms[NUM_NOTES];
+
+AdEnv env[NUM_NOTES];
+crc_noise noise;
 
 int  blink_mask = 511; 
 int  blink_cnt = 0;
 bool led_state = true;
 
 static Parameter knob1_lin, knob1_log, knob2_lin, knob2_log;
-float cur_ifc, cur_g, cur_stiff, cur_beta, cur_mgf, cur_mrf, cur_out;
+float cur_ifc, cur_g, cur_stiff, cur_beta, cur_mgf, cur_mrf, cur_out, cur_a, cur_d;
 
 int midi_f = 0;
 int next_note = 0;
 bool play_note = false;
 
-typedef enum {MIDI = 0, GAIN_OUT, STIFF_BETA, IFC_MGF, LAST_PAGE} ui_page;
+typedef enum {MIDI = 0, GAIN_OUT, STIFF_BETA, IFC_MGF, AD, LAST_PAGE} ui_page;
 ui_page cur_page = MIDI;
-typedef enum {PING = 0, EXT, INHARM, LAST_MODE} ui_mode;
+typedef enum {PING = 0, NOISE_ENV, EXT, EXT_ENV, INHARM, INHARM_NOISE, LAST_MODE} ui_mode;
 ui_mode cur_mode = PING;
 typedef enum {NONE = 0, EXP_DIST, TANH, ARCTAN, LAST_OUTPUT} ui_output_mode;
 ui_output_mode cur_output_mode = NONE;
@@ -68,6 +78,7 @@ int cur_preset = 0;
 
 
 void UpdateEncoder();
+void UpdateButtons();
 float CatchParam(float old, float cur, float thresh);
 
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
@@ -79,7 +90,9 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 	{
 	  float to_out = 0;
 	  for (int j = 0; j < NUM_NOTES; j++) {
-	    if (cur_mode == PING || cur_mode == INHARM) {
+	    if (cur_mode == EXT || cur_mode == EXT_ENV) {
+	      to_in = in[0][i];
+	    } else {
 	      to_in = 0;
 	      if (play_note && (j == next_note)) {
 	        to_in = PING_AMT;
@@ -87,11 +100,17 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 	        if (++next_note == NUM_NOTES) {
 	          next_note = 0;
 	        }
+		if (cur_mode == NOISE_ENV || cur_mode == INHARM_NOISE) {
+		  env[j].Trigger();
+		}
 	      }
-	    } else {
-	      to_in = in[0][i];
 	    }
-	    if (cur_mode == INHARM) {
+	    if (cur_mode == NOISE_ENV || cur_mode == INHARM_NOISE) {
+	      to_in = env[j].Process() * noise.Process();
+	    } else if (cur_mode == EXT_ENV) {
+	      to_in = env[j].Process() * to_in;
+	    }
+	    if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
 	      to_out += inharms[j]->Process(to_in) / NUM_NOTES;
 	    } else {
 	      to_out += notes[j]->Process(to_in) / NUM_NOTES;
@@ -126,7 +145,7 @@ void HandleMidiMessage(MidiEvent m) {
      case NoteOn: {
 	  NoteOnEvent this_note = m.AsNoteOn();
 	  midi_f = mtof(this_note.note);
-	  if (cur_mode == INHARM) {
+	  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
 	    inharms[next_note]->update_fc(midi_f);
 	  } else {
 	    notes[next_note]->update_fc(midi_f);
@@ -141,7 +160,7 @@ void HandleMidiMessage(MidiEvent m) {
             {
 	      case CC_MOD: 
 		{
-		  if (cur_mode == INHARM) {
+		  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
 		    float new_res = CC_TO_VAL(p.value, -1, 1);
 		    for (int i = 0; i < NUM_NOTES; i++) {
 		      inharms[i]->modulate_r(new_res);
@@ -190,6 +209,28 @@ void HandleMidiMessage(MidiEvent m) {
 		  }
 		  break;
 		}
+	      case CC_REL:
+		{
+		  cur_d = CatchParam(cur_d, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  float new_d = POT_TO_VAL(cur_d, ENV_MIN, ENV_MAX);
+		  for (int i = 0; i < NUM_NOTES; i++) {
+		    if (!env[i].IsRunning()) {
+      	  	      env[i].SetTime(ADSR_SEG_DECAY, new_d);
+	  	    }
+		  }
+		  break;
+		}
+	      case CC_ATK:
+		{
+		  cur_a = CatchParam(cur_a, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  float new_a = POT_TO_VAL(cur_a, ENV_MIN, ENV_MAX);
+		  for (int i = 0; i < NUM_NOTES; i++) {
+		    if (!env[i].IsRunning()) {
+      	  	      env[i].SetTime(ADSR_SEG_ATTACK, new_a);
+	  	    }
+		  }
+		  break;
+		}
               default: break;
 	    }
 	    break;
@@ -212,7 +253,7 @@ void UpdateEncoder()
   {
     case MIDI:
       // disable controls
-      hw.led1.Set(0.7f, 0, 0.7f);
+      hw.led1.Set(PURPLE);
       break;
     case GAIN_OUT:
       {
@@ -221,13 +262,13 @@ void UpdateEncoder()
 	cur_out = CatchParam(cur_out, knob2_lin.Process(), CATCH_THRESH);
 	cur_output_mode = (ui_output_mode)roundf(cur_out * (LAST_OUTPUT - 1));
 	for (int i = 0; i < NUM_NOTES; i++) {
-	  if (cur_mode == INHARM) {
+	  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
 	    inharms[i]->modulate_g(new_g);
 	  } else {
 	    notes[i]->update_g(new_g);
 	  }
 	}
-	hw.led1.Set(1.0f, 0, 0);
+	hw.led1.Set(RED);
 	break;
       }
     case STIFF_BETA:
@@ -240,7 +281,7 @@ void UpdateEncoder()
 	  notes[i]->update_stiffness(new_stiff);
 	  notes[i]->update_beta(new_beta);
 	}
-	hw.led1.Set(0, 1.0f, 0);
+	hw.led1.Set(GREEN);
 	break;
       }
     case IFC_MGF:
@@ -250,14 +291,29 @@ void UpdateEncoder()
 	cur_mgf = CatchParam(cur_mgf, knob2_log.Process(), CATCH_THRESH);
 	float new_mgf = POT_TO_VAL(cur_mgf, MGF_MIN, MGF_MAX);
 	for (int i = 0; i < NUM_NOTES; i++) {
-	  if (cur_mode == INHARM) {
+	  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
 	    inharms[i]->update_ifc(new_ifc);
 	  } else {
 	    notes[i]->update_mgf(new_mgf);
 	    notes[i]->update_ifc(new_ifc);
 	  }
 	}
-	hw.led1.Set(0, 0, 1.0f);
+	hw.led1.Set(BLUE);
+	break;
+      }
+    case AD:
+      {
+	cur_a = CatchParam(cur_a, knob1_log.Process(), CATCH_THRESH);
+	float new_a = POT_TO_VAL(cur_a, ENV_MIN, ENV_MAX);
+	cur_d = CatchParam(cur_d, knob2_log.Process(), CATCH_THRESH);
+	float new_d = POT_TO_VAL(cur_d, ENV_MIN, ENV_MAX);
+	for (int i = 0; i < NUM_NOTES; i++) {
+	  if (!env[i].IsRunning()) {
+	    env[i].SetTime(ADSR_SEG_ATTACK, new_a);
+      	    env[i].SetTime(ADSR_SEG_DECAY, new_d);
+	  }
+	}
+	hw.led1.Set(YELLOW);
 	break;
       }
     default: break;
@@ -282,13 +338,22 @@ void UpdateButtons()
       }
     switch(cur_mode) {
       case PING:
-        hw.led2.Set(0, 0, 0);
+        hw.led2.Set(OFF);
+        break;
+      case NOISE_ENV:
+        hw.led2.Set(PURPLE);
         break;
       case EXT:
-        hw.led2.Set(0, 0.7, 0.7);
+        hw.led2.Set(CYAN);
+        break;
+      case EXT_ENV:
+        hw.led2.Set(BLUE);
         break;
       case INHARM:
-        hw.led2.Set(0.7, 0.7, 0);
+        hw.led2.Set(YELLOW);
+        break;
+      case INHARM_NOISE:
+        hw.led2.Set(WHITE);
         break;
       default:
         break;
@@ -308,24 +373,35 @@ int main(void)
 	  notes[i]->init(sr, 45, 0.9999);
 	  inharms[i] = new modal_inharm(NUM_INHARM_PARTIALS);
 	  inharms[i]->init(sr, 45, &inharm_presets[cur_preset]);
+
+	  env[i].Init(sr);
+      	  env[i].SetTime(ADSR_SEG_ATTACK, 0.015);
+      	  env[i].SetTime(ADSR_SEG_DECAY, 0.015);
+	  env[i].SetCurve(20);
 	}
+
+	noise.Init();
 
 	knob1_lin.Init(hw.knob1, 0.0f, 1.0f, knob1_lin.LINEAR); 
 	knob1_log.Init(hw.knob1, 0.0f, 1.0f, knob1_log.EXPONENTIAL); 
 	knob2_lin.Init(hw.knob2, 0.0f, 1.0f, knob2_lin.LINEAR); 
 	knob2_log.Init(hw.knob2, 0.0f, 1.0f, knob2_log.EXPONENTIAL); 
+	knob1_lin.Process();
+        knob1_log.Process();
+        knob2_lin.Process();
+        knob2_log.Process();
 
-	hw.led1.Set(0.7f, 0, 0.7f); // MIDI MODE
-	hw.led2.Set(0 ,0.7f, 0.7f); // PING MODE
+	hw.led1.Set(PURPLE); // MIDI MODE
+	hw.led2.Set(OFF); // PING MODE
 
 	UpdateButtons();
 	UpdateEncoder();
 	cur_g = 0.5;
+	cur_a = 0.015;
+	cur_d = 0.015;
 	cur_page = MIDI;
 	cur_mode = PING;
 	cur_output_mode = NONE;
-	cur_preset = 0;
-        hw.led2.Set(0, 0, 0);
 
 	hw.StartAdc();
 	hw.StartAudio(AudioCallback);
@@ -345,6 +421,7 @@ int main(void)
           {
               HandleMidiMessage(hw.midi.PopEvent());
           }
+	  hw.ProcessAnalogControls();
 	  hw.ProcessDigitalControls();
 	  UpdateEncoder();
 	  UpdateButtons();

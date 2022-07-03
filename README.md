@@ -30,6 +30,8 @@ MAGENTA = MIDI page:
 &nbsp;&nbsp;CC 7 (Volume) = gain  
 &nbsp;&nbsp;CC 70 = stiffness  
 &nbsp;&nbsp;CC 71 = beta (harmonics control)  
+&nbsp;&nbsp;CC 72 = attack time for envelope modes
+&nbsp;&nbsp;CC 73 = decay time for envelope modes
 &nbsp;&nbsp;CC 74 = MGF (mode gain factor)  
   
 RED = Gain / Overdrive page:  
@@ -43,21 +45,32 @@ GREEN = Stiffness / Beta page:
 BLUE = IFC / MGF page:  
 &nbsp;&nbsp;POT1 = Input Filter Cutoff = 10 to 22000Hz  
 &nbsp;&nbsp;POT2 = MGF (Brightness - boosts or cuts higher modes)
+
+YELLOW = ENVELOPE page:  
+&nbsp;&nbsp;POT1 = Attack time - 1 to 100 ms
+&nbsp;&nbsp;POT2 = DECAY time - 1 to 100 ms
   
-Button 2 toggles between ping, external input or inharmonic mode  
+Button 2 toggles between harmonic ping, harmonic noise env, external input, enveloped external input, inharmonic ping or inharmonic noise mode  
   
 LED2 = OFF  
-&nbsp;&nbsp;Ping mode, each note is excited by a single ping  
+&nbsp;&nbsp;Ping mode, each harmonic note is excited by a single ping  
+LED2 = MAGENTA 
+&nbsp;&nbsp;Harmonic noise env, each note is excited by enveloped noise
 LED2 = CYAN  
 &nbsp;&nbsp;Left input channel is fed into each note
 &nbsp;&nbsp;*CAUTION* This can blow up under high resonances - keep the gain down and bring it up slowly  
+LED2 = BLUE  
+&nbsp;&nbsp;Left input channel is enveloped and fed into each note
+&nbsp;&nbsp;*CAUTION* This can blow up under high resonances - keep the gain down and bring it up slowly  
 LED2 = YELLOW  
-&nbsp;&nbsp;Inharmonic mode - 10 presets available, cycle through with Button 1.  
+&nbsp;&nbsp;Inharmonic mode - 10 presets available, cycle through with Button 1. Excited by a ping.  
 &nbsp;&nbsp;Resonance can be modulated with the MOD WHEEL  
 &nbsp;&nbsp;Input filter cutoff can be adjusted by turning POT1 on the BLUE page  
+LED2 = WHITE  
+&nbsp;&nbsp;Same as Inharmonic mode but excited by enveloped noise 
   
   
-Demo / feature walkthrough available click here:  
+An early Demo / feature walkthrough available click here:  
 [![ModalResonators Demo](https://img.youtube.com/vi/S-_UZKW8978/0.jpg)](https://www.youtube.com/watch?v=S-_UZKW8978 "ModalResonators Demo")
 
 

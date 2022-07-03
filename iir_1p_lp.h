@@ -39,6 +39,8 @@ class iir_1p_lp
 
     alpha_ = (1 - tan(wc_ / 2.0)) / (1 + tan(wc_ / 2.0));
     g_ = g * (1 - alpha_) / 2.0;
+    b0_ = b1_ = g_;
+    a1_ = -alpha_;
   }
 
   float Process(float in)

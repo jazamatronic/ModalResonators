@@ -54,7 +54,10 @@ class modal_note
 
 	float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
 	// dont alias
-	if (mode_f > (fs_ / 2)) break;
+	if (mode_f > (fs_ / 2)) {
+	  calculated_modes++;
+	  break;
+	}
 
 	float mode_g = g_ / pow((i + 1), mgf_);
 
@@ -94,11 +97,15 @@ class modal_note
       	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
 
       	  // dont alias
-      	  if (mode_f > (fs_ / 2)) break;
+      	  if (mode_f > (fs_ / 2)) {
+	    calculated_modes++;
+  	    break;
+	  }
 
       	  modes[calculated_modes].update_fc(mode_f);
       	  calculated_modes++;
       	}
+	n_modes_ = calculated_modes;
       }
     }
 
@@ -153,11 +160,15 @@ class modal_note
   	  
   	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
   	  // dont alias
-  	  if (mode_f > (fs_ / 2)) break;
+  	  if (mode_f > (fs_ / 2)) {
+	    calculated_modes++;
+	    break;
+	  }
 
       	  modes[calculated_modes].update_fc(mode_f);
       	  calculated_modes++;
 	}
+	n_modes_ = calculated_modes;
       }
     }
 
@@ -175,11 +186,15 @@ class modal_note
       	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
 
       	  // dont alias
-      	  if (mode_f > (fs_ / 2)) break;
+      	  if (mode_f > (fs_ / 2)) {
+	    calculated_modes++;
+	    break;
+	  }
 
       	  modes[calculated_modes].update_fc(mode_f);
       	  calculated_modes++;
       	}
+	n_modes_ = calculated_modes;
       }
     }
 

@@ -47,11 +47,14 @@ class modal_inharm
 	float mode_f;
 	if (modes_.at(i) > 0) {
 	  mode_f = modes_.at(i) * fc_;  
-	  // dont alias
 	} else {
 	  mode_f = -modes_.at(i);
 	}
-	if (mode_f > (fs_ / 2)) break;
+	// dont alias
+	if (mode_f > (fs_ / 2)) {
+	  n_modes_ = i;
+	  break;
+	}
 
 	float mode_g = gains_.at(i) / pow((i + 1), mgf_);
 	float mode_r = res_.at(i);
@@ -64,9 +67,9 @@ class modal_inharm
 
     void load_preset(inharm_preset *preset)
     {
+      int i;
       n_modes_ = preset->num_modes;
-
-      for (int i = 0; i < n_modes_; i++) {
+      for (i = 0; i < n_modes_; i++) {
 	modes_.at(i) = preset->modes[i];
 	gains_.at(i) = preset->gains[i];
 	res_.at(i) = preset->res[i];
@@ -74,11 +77,14 @@ class modal_inharm
 	float mode_f;
 	if (modes_.at(i) > 0) {
 	  mode_f = modes_.at(i) * fc_;  
-	  // dont alias
 	} else {
 	  mode_f = -modes_.at(i);
 	}
-	if (mode_f > (fs_ / 2)) break;
+	// dont alias
+	if (mode_f > (fs_ / 2)) {
+	  n_modes_ = i;
+	  break;
+	}
 
 	float mode_g = gains_.at(i) / pow((i + 1), mgf_);
 	float mode_r = res_.at(i);
@@ -102,10 +108,11 @@ class modal_inharm
 
     void update_fc(float fc)
     {
+      int i;
       if (fc != fc_) {
 	fc_ = fc;
 
-	for (int i = 0; i < n_modes_; i++) {
+	for (i = 0; i < n_modes_; i++) {
       	  float mode_f;
 	  if (modes_.at(i) > 0) {
 	    mode_f = modes_.at(i) * fc_;  
@@ -113,7 +120,11 @@ class modal_inharm
 	    mode_f = -modes_.at(i);  
 	  }
       	  // dont alias
-      	  if (mode_f > (fs_ / 2)) break;
+      	  if (mode_f > (fs_ / 2)) { 
+	    n_modes_ = i;
+	    break;
+	  }
+	
       	  modes[i].update_fc(mode_f);
       	}
       }
