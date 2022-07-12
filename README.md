@@ -33,6 +33,14 @@ MAGENTA = MIDI page:
 &nbsp;&nbsp;CC 72 = attack time for envelope modes
 &nbsp;&nbsp;CC 73 = decay time for envelope modes
 &nbsp;&nbsp;CC 74 = MGF (mode gain factor)  
+&nbsp;&nbsp;CC 75 = Mode
+&nbsp;&nbsp;CC 76 = Inharmonic Preset
+&nbsp;&nbsp;CC 85 = IFC LFO Rate
+&nbsp;&nbsp;CC 86 = IFC LFO Depth
+&nbsp;&nbsp;CC 87 = Stiffness LFO Rate
+&nbsp;&nbsp;CC 88 = Stiffness LFO Depth
+&nbsp;&nbsp;CC 89 = BETA LFO Rate
+&nbsp;&nbsp;CC 90 = BETA LFO Depth
   
 RED = Gain / Overdrive page:  
 &nbsp;&nbsp;POT1 = Gain  
@@ -42,9 +50,21 @@ GREEN = Stiffness / Beta page:
 &nbsp;&nbsp;POT1 = Stiffness (spreads higher modes)  
 &nbsp;&nbsp;POT2 = Beta (controls harmonic content)  
   
+LIGHT GREEN = Stiffness LFO:
+&nbsp;&nbsp;POT1 = LFO Rate
+&nbsp;&nbsp;POT2 = LFO Depth
+  
+ORANGE = BETA LFO:
+&nbsp;&nbsp;POT1 = LFO Rate
+&nbsp;&nbsp;POT2 = LFO Depth
+  
 BLUE = IFC / MGF page:  
 &nbsp;&nbsp;POT1 = Input Filter Cutoff = 10 to 22000Hz  
 &nbsp;&nbsp;POT2 = MGF (Brightness - boosts or cuts higher modes)
+
+LIGHT BLUE = BETA LFO:
+&nbsp;&nbsp;POT1 = LFO Rate
+&nbsp;&nbsp;POT2 = LFO Depth
 
 YELLOW = ENVELOPE page:  
 &nbsp;&nbsp;POT1 = Attack time - 1 to 100 ms
