@@ -181,14 +181,15 @@ void HandleMidiMessage(MidiEvent m) {
      case NoteOn: {
 	  NoteOnEvent this_note = m.AsNoteOn();
 	  midi_f = mtof(this_note.note);
+	  // TODO: fix velocity 
 	  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
 	    midi_v = CC_TO_VAL(this_note.velocity, 0, 1);
-	    inharms[next_note]->update_fc(midi_f);
 	    inharms[next_note]->modulate_g(midi_v);
+	    inharms[next_note]->update_fc(midi_f);
 	  } else {
-	    midi_v = CC_TO_VAL(this_note.velocity, cur_g, GAIN_MAX);
-	    notes[next_note]->update_fc(midi_f);
+	    midi_v = CC_TO_VAL(this_note.velocity, 0, cur_g);
 	    notes[next_note]->update_g(midi_v);
+	    notes[next_note]->update_fc(midi_f);
 	  }
 	  play_note = true;
           break;
