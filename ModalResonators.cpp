@@ -45,22 +45,23 @@
 #define POT_TO_VAL(x, min, max) (min + x * (max - min))
 #define VAL_TO_POT(x, min, max) ((x - min) / (max - min))
 
-#define  MIDI_CHANNEL	0 // todo - make this settable somehow. Daisy starts counting MIDI channels from 0
-#define  CC_MOD	       	1
-#define  CC_GAIN       	7
-#define  CC_STIFF      	70
-#define  CC_BETA       	71
-#define  CC_REL        	72
-#define  CC_ATK        	73
-#define  CC_MGF	       	74
-#define  CC_MODE	75
-#define  CC_INHARM	76
-#define  CC_LFO_IFC_R  	85
-#define  CC_LFO_IFC_D  	86
-#define  CC_LFO_STIFF_R	87
-#define  CC_LFO_STIFF_D	88
-#define  CC_LFO_BETA_R	89
-#define  CC_LFO_BETA_D	90
+#define MIDI_CHANNEL	0 // todo - make this settable somehow. Daisy starts counting MIDI channels from 0
+#define CC_MOD	       	1
+#define CC_GAIN       	7
+#define	CC_IFC		14
+#define CC_STIFF      	70
+#define CC_BETA       	71
+#define CC_REL        	72
+#define CC_ATK        	73
+#define CC_MGF	       	74
+#define CC_MODE		75
+#define CC_INHARM	76
+#define CC_LFO_IFC_R  	85
+#define CC_LFO_IFC_D  	86
+#define CC_LFO_STIFF_R	87
+#define CC_LFO_STIFF_D	88
+#define CC_LFO_BETA_R	89
+#define CC_LFO_BETA_D	90
 
 // For distortion models
 #define INV_ARCTAN_1 1.273239544735163
@@ -220,33 +221,39 @@ void HandleMidiMessage(MidiEvent m) {
 		    if (cur_g > 1) { cur_g = 1; }
 		    new_g = CatchParam(cur_g, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
 		  } else {
-		    new_g = POT_TO_VAL(CatchParam(cur_g, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), GAIN_MIN, GAIN_MAX);
+		    cur_g_pot = CatchParam(cur_g_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		    new_g = POT_TO_VAL(cur_g_pot, GAIN_MIN, GAIN_MAX);
 		  }
 		  break;
 		}
 	      case CC_STIFF: 
 		{
-		  new_stiff = POT_TO_VAL(CatchParam(cur_stiff, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), STIFF_MIN, STIFF_MAX);
+		  cur_stiff_pot = CatchParam(cur_stiff_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_stiff = POT_TO_VAL(cur_stiff_pot, STIFF_MIN, STIFF_MAX);
 		  break;
 		}
 	      case CC_BETA: 
 		{
-		  new_beta = (int)roundf(POT_TO_VAL(CatchParam(cur_beta, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), BETA_MIN, BETA_MAX));
+		  cur_beta_pot = CatchParam(cur_beta_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_beta = (int)roundf(POT_TO_VAL(cur_beta_pot, BETA_MIN, BETA_MAX));
 		  break;
 		}
 	      case CC_MGF: 
 		{
-		  new_mgf = POT_TO_VAL(CatchParam(cur_mgf, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), MGF_MIN, MGF_MAX);
+		  cur_mgf_pot = CatchParam(cur_mgf_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_mgf = POT_TO_VAL(cur_mgf_pot, MGF_MIN, MGF_MAX);
 		  break;
 		}
 	      case CC_REL:
 		{
-		  new_d = POT_TO_VAL(CatchParam(cur_d, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), ENV_MIN, ENV_MAX);
+		  cur_d_pot = CatchParam(cur_d_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_d = POT_TO_VAL(cur_d_pot, ENV_MIN, ENV_MAX);
 		  break;
 		}
 	      case CC_ATK:
 		{
-		  new_a = POT_TO_VAL(CatchParam(cur_a, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), ENV_MIN, ENV_MAX);
+		  cur_a_pot = CatchParam(cur_a_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_a = POT_TO_VAL(cur_a_pot, ENV_MIN, ENV_MAX);
 		  break;
 		}
 	      case CC_MODE:
@@ -265,32 +272,44 @@ void HandleMidiMessage(MidiEvent m) {
 		}
 	      case CC_LFO_IFC_R:
 		{
-		  new_lfo_ifc_rate = POT_TO_VAL(CatchParam(cur_lfo_ifc_rate, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), 0, LFO_RATE_MAX);
+		  cur_lfo_ifc_rate_pot = CatchParam(cur_lfo_ifc_rate_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_lfo_ifc_rate = POT_TO_VAL(cur_lfo_ifc_rate_pot, 0, LFO_RATE_MAX);
 		  break;
 		}
 	      case CC_LFO_IFC_D:
 		{
-		  new_lfo_ifc_depth = CatchParam(cur_lfo_ifc_depth, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  cur_lfo_ifc_depth_pot = CatchParam(cur_lfo_ifc_depth_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_lfo_ifc_depth = cur_lfo_ifc_depth_pot;
 		  break;
 		}
 	      case CC_LFO_STIFF_R:
 		{
-		  new_lfo_stiff_rate = POT_TO_VAL(CatchParam(cur_lfo_stiff_rate, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), 0, LFO_RATE_MAX);
+		  cur_lfo_stiff_rate_pot = CatchParam(cur_lfo_stiff_rate_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_lfo_stiff_rate = POT_TO_VAL(cur_lfo_stiff_rate_pot, 0, LFO_RATE_MAX);
 		  break;
 		}
 	      case CC_LFO_STIFF_D:
 		{
-		  new_lfo_stiff_depth = CatchParam(cur_lfo_stiff_depth, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  cur_lfo_stiff_depth_pot = CatchParam(cur_lfo_stiff_depth_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_lfo_stiff_depth = cur_lfo_stiff_depth_pot;
 		  break;
 		}
 	      case CC_LFO_BETA_R:
 		{
-		  new_lfo_beta_rate = POT_TO_VAL(CatchParam(cur_lfo_beta_rate, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH), 0, LFO_RATE_MAX);
+		  cur_lfo_beta_rate_pot = CatchParam(cur_lfo_beta_rate_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_lfo_beta_rate = POT_TO_VAL(cur_lfo_beta_rate_pot, 0, LFO_RATE_MAX);
 		  break;
 		}
 	      case CC_LFO_BETA_D:
 		{
-		  new_lfo_beta_depth = CatchParam(cur_lfo_beta_depth, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  cur_lfo_beta_depth_pot = CatchParam(cur_lfo_beta_depth_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_lfo_beta_depth = cur_lfo_beta_depth_pot;
+		  break;
+		}
+	      case CC_IFC:
+		{
+		  cur_ifc_pot = CatchParam(cur_ifc_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
+		  new_ifc = POT_TO_VAL(cur_ifc_pot, IFC_MIN, IFC_MAX);
 		  break;
 		}
               default: break;
@@ -610,7 +629,6 @@ int main(void)
 	  hw.ProcessDigitalControls();
 	  UpdateEncoder();
 	  UpdateButtons();
-//	  UpdateParams();
 	  hw.UpdateLeds();
 	  hw.DelayMs(1);
 	}

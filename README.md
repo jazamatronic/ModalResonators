@@ -28,6 +28,7 @@ MAGENTA = MIDI page:
 &nbsp;&nbsp;MIDI CC messages control the following parameters:  
 &nbsp;&nbsp;CC 1 (Mod Wheel) = resonance  
 &nbsp;&nbsp;CC 7 (Volume) = gain  
+&nbsp;&nbsp;CC 14 = Input Filter Cutoff (IFC)  
 &nbsp;&nbsp;CC 70 = stiffness  
 &nbsp;&nbsp;CC 71 = beta (harmonics control)  
 &nbsp;&nbsp;CC 72 = attack time for envelope modes
