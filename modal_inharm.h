@@ -5,10 +5,7 @@
 // Maximum resonance - let's try and keep things stable
 #define RES_MAX 0.99999
 
-// Match this to ModalResonators.cpp
-#define GAIN_MAX  10
-
-#define CLAMP(x, min, max)  (x > max) ? max : ((x < min) ? min : x)
+#define GAIN_MAX  10.0f
 
 #include <stdint.h>
 #include "arm_math.h"
@@ -156,7 +153,8 @@ class modal_inharm
     void modulate_g(float amt)
     {
       for (int i = 0; i < n_modes_; i++) {
-	float g = gains_.at(i) + amt * (GAIN_MAX - gains_.at(i));
+	//float g = gains_.at(i) + amt * (GAIN_MAX - gains_.at(i));
+	float g = gains_.at(i) + amt * (GAIN_MAX * gains_.at(i) - gains_.at(i));
 	modes[i].update_g(g);
       }
     }

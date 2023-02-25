@@ -11,7 +11,7 @@
 #define DEFAULT_MGF   0
 #define DEFAULT_IFC   10
 
-#define CLAMP(x, min, max)  (x > max) ? max : ((x < min) ? min : x)
+#define CLAMP(x, min, max)  ((x) > max) ? max : (((x) < min) ? min : x)
 
 #include <stdint.h>
 #include "arm_math.h"

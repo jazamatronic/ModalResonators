@@ -5,40 +5,44 @@
 #include "crc_noise.h"
 #include "led_colours.h"
 #include "tri_lfo.h"
-
-// TODO: Make parameter handling cleaner
+#include "PagedParam.h"
 
 #define NUM_HARM_PARTIALS   4
 #define NUM_NOTES	    5
 
 #define NUM_LFOS      3
+#define LFO_RATE_DEFAULT 0.3
+#define LFO_RATE_MIN  0
 #define LFO_RATE_MAX  60
-#define LFO_DEPTH_MAX 1
+#define LFO_DEPTH_MIN 0.0f
+#define LFO_DEPTH_MAX 1.0f
 #define LFO_IFC	      0
 #define LFO_STIFF     1
 #define LFO_BETA      2
 
 #define PING_AMT      	    1 //0.25 
 
-#define CATCH_THRESH	  0.05f
+#define PARAM_THRESH	  0.05f
 
 #define RES_MIN	  0.99333
 #define RES_MAX   0.99999
+#define IFC_DEFAULT 220
 #define IFC_MIN   10
 #define IFC_MAX   22000
-#define GAIN_MIN  0
-#define GAIN_MAX  10 
+#define GAIN_DEFAULT 0.5f
+#define GAIN_MIN  0.0f
 #define STIFF_MIN 0
 #define STIFF_MAX 0.005 
 #define BETA_MIN  2
 #define BETA_MAX  5
+#define MGF_DEFAULT 0
 #define MGF_MIN	  -1
 #define MGF_MAX   3
+#define ENV_DEFAULT 0.015
 #define ENV_MIN	  0.001
 #define ENV_MAX	  0.1
 
 
-#define CLAMP(x, min, max)  (x > max) ? max : ((x < min) ? min : x)
 #define SGN(x)		    (signbit(x) ? -1.0 : 1.0)
 
 #define CC_TO_VAL(x, min, max) (min + (x / 127.0f) * (max - min))
@@ -85,12 +89,11 @@ int  blink_cnt = 0;
 bool led_state = true;
 
 static Parameter knob1_lin, knob1_log, knob2_lin, knob2_log;
-float cur_ifc_pot, cur_g_pot, cur_stiff_pot, cur_beta_pot, cur_mgf_pot, cur_mrf_pot, cur_out_pot, cur_a_pot, cur_d_pot;
-float cur_ifc, cur_g, cur_stiff, cur_beta, cur_mgf, cur_mrf, cur_out, cur_a, cur_d;
-float new_ifc, new_g, new_stiff, new_beta, new_mgf, new_mrf, new_out, new_a, new_d;
-float cur_lfo_ifc_rate_pot, cur_lfo_ifc_depth_pot, cur_lfo_stiff_rate_pot, cur_lfo_stiff_depth_pot, cur_lfo_beta_rate_pot, cur_lfo_beta_depth_pot;
-float cur_lfo_ifc_rate, cur_lfo_ifc_depth, cur_lfo_stiff_rate, cur_lfo_stiff_depth, cur_lfo_beta_rate, cur_lfo_beta_depth;
+PagedParam ifc_p, g_p, inharm_g_p, stiff_p, beta_p, mgf_p, mrf_p, out_p, at_p, dt_p;
+PagedParam lfo_ifc_rate_p, lfo_ifc_depth_p, lfo_stiff_rate_p, lfo_stiff_depth_p, lfo_beta_rate_p, lfo_beta_depth_p;
+float new_ifc, new_g, new_stiff, new_beta, new_mgf, new_mrf, new_out, new_at, new_dt;
 float new_lfo_ifc_rate, new_lfo_ifc_depth, new_lfo_stiff_rate, new_lfo_stiff_depth, new_lfo_beta_rate, new_lfo_beta_depth;
+float cur_beta, cur_ifc, cur_stiff;
 
 int midi_f = 0;
 float midi_v = 0;
@@ -110,7 +113,6 @@ void UpdateEncoder();
 void UpdateButtons();
 void UpdateParams();
 void SetLedMode();
-float CatchParam(float old, float cur, float thresh);
 
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
@@ -188,7 +190,7 @@ void HandleMidiMessage(MidiEvent m) {
 	    inharms[next_note]->modulate_g(midi_v);
 	    inharms[next_note]->update_fc(midi_f);
 	  } else {
-	    midi_v = CC_TO_VAL(this_note.velocity, 0, cur_g);
+	    midi_v = CC_TO_VAL(this_note.velocity, 0, new_g);
 	    notes[next_note]->update_g(midi_v);
 	    notes[next_note]->update_fc(midi_f);
 	  }
@@ -197,136 +199,94 @@ void HandleMidiMessage(MidiEvent m) {
 	}
         case ControlChange:
         {
-            ControlChangeEvent p = m.AsControlChange();
-            switch(p.control_number)
-            {
-	      case CC_MOD: 
-		{
-		  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
-		    float new_res = CC_TO_VAL(p.value, -1, 1);
-		    for (int i = 0; i < NUM_NOTES; i++) {
-		      inharms[i]->modulate_r(new_res);
-		    }
-		  } else {
-		    float new_res = CC_TO_VAL(p.value, RES_MIN, RES_MAX);
-		    for (int i = 0; i < NUM_NOTES; i++) {
-		      notes[i]->update_r(new_res);
-		    }
-		  }
-		  break;
-		}
-	      case CC_GAIN: 
-		{
-		  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
-		    if (cur_g > 1) { cur_g = 1; }
-		    new_g = CatchParam(cur_g, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  } else {
-		    cur_g_pot = CatchParam(cur_g_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		    new_g = POT_TO_VAL(cur_g_pot, GAIN_MIN, GAIN_MAX);
-		  }
-		  break;
-		}
-	      case CC_STIFF: 
-		{
-		  cur_stiff_pot = CatchParam(cur_stiff_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_stiff = POT_TO_VAL(cur_stiff_pot, STIFF_MIN, STIFF_MAX);
-		  break;
-		}
-	      case CC_BETA: 
-		{
-		  cur_beta_pot = CatchParam(cur_beta_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_beta = (int)roundf(POT_TO_VAL(cur_beta_pot, BETA_MIN, BETA_MAX));
-		  break;
-		}
-	      case CC_MGF: 
-		{
-		  cur_mgf_pot = CatchParam(cur_mgf_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_mgf = POT_TO_VAL(cur_mgf_pot, MGF_MIN, MGF_MAX);
-		  break;
-		}
-	      case CC_REL:
-		{
-		  cur_d_pot = CatchParam(cur_d_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_d = POT_TO_VAL(cur_d_pot, ENV_MIN, ENV_MAX);
-		  break;
-		}
-	      case CC_ATK:
-		{
-		  cur_a_pot = CatchParam(cur_a_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_a = POT_TO_VAL(cur_a_pot, ENV_MIN, ENV_MAX);
-		  break;
-		}
-	      case CC_MODE:
-		{
-		  cur_mode = (ui_mode)floor(CC_TO_VAL(p.value, 0, (LAST_MODE - 0.1))); // - 0.1 to avoid hitting LAST_MODE
-		  SetLedMode();
-		  break;
-		}
-	      case CC_INHARM:
-		{
-		  cur_preset = floor(CC_TO_VAL(p.value, 0, NUM_INHARM_PRESETS));
-		  for (int i = 0; i < NUM_NOTES; i++) {
-    		    inharms[i]->load_preset(&inharm_presets[cur_preset]);
-    		  }
-		  break;
-		}
-	      case CC_LFO_IFC_R:
-		{
-		  cur_lfo_ifc_rate_pot = CatchParam(cur_lfo_ifc_rate_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_lfo_ifc_rate = POT_TO_VAL(cur_lfo_ifc_rate_pot, 0, LFO_RATE_MAX);
-		  break;
-		}
-	      case CC_LFO_IFC_D:
-		{
-		  cur_lfo_ifc_depth_pot = CatchParam(cur_lfo_ifc_depth_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_lfo_ifc_depth = cur_lfo_ifc_depth_pot;
-		  break;
-		}
-	      case CC_LFO_STIFF_R:
-		{
-		  cur_lfo_stiff_rate_pot = CatchParam(cur_lfo_stiff_rate_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_lfo_stiff_rate = POT_TO_VAL(cur_lfo_stiff_rate_pot, 0, LFO_RATE_MAX);
-		  break;
-		}
-	      case CC_LFO_STIFF_D:
-		{
-		  cur_lfo_stiff_depth_pot = CatchParam(cur_lfo_stiff_depth_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_lfo_stiff_depth = cur_lfo_stiff_depth_pot;
-		  break;
-		}
-	      case CC_LFO_BETA_R:
-		{
-		  cur_lfo_beta_rate_pot = CatchParam(cur_lfo_beta_rate_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_lfo_beta_rate = POT_TO_VAL(cur_lfo_beta_rate_pot, 0, LFO_RATE_MAX);
-		  break;
-		}
-	      case CC_LFO_BETA_D:
-		{
-		  cur_lfo_beta_depth_pot = CatchParam(cur_lfo_beta_depth_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_lfo_beta_depth = cur_lfo_beta_depth_pot;
-		  break;
-		}
-	      case CC_IFC:
-		{
-		  cur_ifc_pot = CatchParam(cur_ifc_pot, CC_TO_VAL(p.value, 0, 1), CATCH_THRESH);
-		  new_ifc = POT_TO_VAL(cur_ifc_pot, IFC_MIN, IFC_MAX);
-		  break;
-		}
-              default: break;
-	    }
-	    break;
+	  ControlChangeEvent p = m.AsControlChange();
+	  switch(p.control_number)
+	  {
+	    case CC_MOD: 
+	      {
+	        if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
+	          float new_res = CC_TO_VAL(p.value, -1, 1);
+	          for (int i = 0; i < NUM_NOTES; i++) {
+	            inharms[i]->modulate_r(new_res);
+	          }
+	        } else {
+	          float new_res = CC_TO_VAL(p.value, RES_MIN, RES_MAX);
+	          for (int i = 0; i < NUM_NOTES; i++) {
+	            notes[i]->update_r(new_res);
+	          }
+	        }
+	        break;
+	      }
+	    case CC_GAIN: 
+	      if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
+	        new_g = inharm_g_p.MidiCCIn(p.value); // inharmonic gain is really a modulation factor between 0 and 1
+	      } else {
+	        new_g = g_p.MidiCCIn(p.value);
+	      }
+	      break;
+	    case CC_STIFF: 
+	      new_stiff = stiff_p.MidiCCIn(p.value);
+	      break;
+	    case CC_BETA: 
+	      new_beta = (int)roundf(beta_p.MidiCCIn(p.value));
+	      break;
+	    case CC_MGF: 
+	      new_mgf = mgf_p.MidiCCIn(p.value);
+	      break;
+	    case CC_REL:
+	      new_dt = dt_p.MidiCCIn(p.value);
+	      break;
+	    case CC_ATK:
+	      new_at = at_p.MidiCCIn(p.value);
+	      break;
+	    case CC_MODE:
+	      cur_mode = (ui_mode)floor(CC_TO_VAL(p.value, 0, (LAST_MODE - 0.1))); // - 0.1 to avoid hitting LAST_MODE
+	      SetLedMode();
+	      break;
+	    case CC_INHARM:
+	      cur_preset = floor(CC_TO_VAL(p.value, 0, NUM_INHARM_PRESETS));
+	      for (int i = 0; i < NUM_NOTES; i++) {
+	        inharms[i]->load_preset(&inharm_presets[cur_preset]);
+	      }
+	      break;
+	    case CC_LFO_IFC_R:
+	      new_lfo_ifc_rate = lfo_ifc_rate_p.MidiCCIn(p.value);
+	      break;
+	    case CC_LFO_IFC_D:
+	      new_lfo_ifc_depth = lfo_ifc_depth_p.MidiCCIn(p.value);
+	      break;
+	    case CC_LFO_STIFF_R:
+	      new_lfo_stiff_rate = lfo_stiff_rate_p.MidiCCIn(p.value);
+	      break;
+	    case CC_LFO_STIFF_D:
+	      new_lfo_stiff_depth = lfo_stiff_depth_p.MidiCCIn(p.value);
+	      break;
+	    case CC_LFO_BETA_R:
+	      new_lfo_beta_rate = lfo_beta_rate_p.MidiCCIn(p.value);
+	      break;
+	    case CC_LFO_BETA_D:
+	      new_lfo_beta_depth = lfo_beta_depth_p.MidiCCIn(p.value);
+	      break;
+	    case CC_IFC:
+	      new_ifc = ifc_p.MidiCCIn(p.value);
+	      break;
+	    default: break;
+	  }
+	  break;
 	}
       default: break;
   }
 }
 
-float CatchParam(float old, float cur, float thresh) 
-{
-  return (abs(old - cur) < thresh) ? cur : old;
-}
-
 void UpdateEncoder()
 {
+
+  //float k1_lin, k1_log, k2_lin, k2_log;
+  //k1_lin = knob1_lin.Process();
+  float k1_log, k2_lin, k2_log;
+  k1_log = knob1_log.Process();
+  k2_lin = knob2_lin.Process();
+  k2_log = knob2_log.Process();
 
   cur_page = (ui_page)(cur_page + hw.encoder.Increment());
   if (cur_page >= LAST_PAGE) { cur_page = MIDI; }
@@ -337,70 +297,48 @@ void UpdateEncoder()
       hw.led1.Set(PURPLE);
       break;
     case GAIN_OUT:
-      {
-	cur_g_pot = CatchParam(cur_g_pot, knob1_log.Process(), CATCH_THRESH);
-	new_g = POT_TO_VAL(cur_g_pot, GAIN_MIN, GAIN_MAX);
-	cur_out_pot = CatchParam(cur_out_pot, knob2_lin.Process(), CATCH_THRESH);
-	new_out = roundf(cur_out_pot * (LAST_OUTPUT - 1));
-	hw.led1.Set(RED);
-	break;
-      }
+      hw.led1.Set(RED);
+      break;
     case STIFF_BETA:
-      {
-	cur_stiff_pot = CatchParam(cur_stiff_pot, knob1_log.Process(), CATCH_THRESH);
-	new_stiff = POT_TO_VAL(cur_stiff_pot, STIFF_MIN, STIFF_MAX);
-	cur_beta_pot = CatchParam(cur_beta_pot, knob2_lin.Process(), CATCH_THRESH);
-	new_beta = (int)roundf(POT_TO_VAL(cur_beta_pot, BETA_MIN, BETA_MAX));
-	hw.led1.Set(GREEN);
-	break;
-      }
+      hw.led1.Set(GREEN);
+      break;
     case STIFF_LFO:
-      {
-	cur_lfo_stiff_rate_pot = CatchParam(cur_lfo_stiff_rate_pot, knob1_log.Process(), CATCH_THRESH);
-	new_lfo_stiff_rate = POT_TO_VAL(cur_lfo_stiff_rate_pot, 0, LFO_RATE_MAX);
-	cur_lfo_stiff_depth_pot = CatchParam(cur_lfo_stiff_depth_pot, knob2_lin.Process(), CATCH_THRESH);
-	new_lfo_stiff_depth = POT_TO_VAL(cur_lfo_stiff_depth_pot, 0, LFO_DEPTH_MAX);
-	hw.led1.Set(LGREEN);
-	break;
-      }
+      hw.led1.Set(LGREEN);
+      break;
     case BETA_LFO:
-      {
-	cur_lfo_beta_rate_pot = CatchParam(cur_lfo_beta_rate_pot, knob1_log.Process(), CATCH_THRESH);
-	new_lfo_beta_rate = POT_TO_VAL(cur_lfo_beta_rate_pot, 0, LFO_RATE_MAX);
-	cur_lfo_beta_depth_pot = CatchParam(cur_lfo_beta_depth_pot, knob2_lin.Process(), CATCH_THRESH);
-	new_lfo_beta_depth = POT_TO_VAL(cur_lfo_beta_depth_pot, 0, LFO_DEPTH_MAX);
-	hw.led1.Set(ORANGE);
-	break;
-      }
+      hw.led1.Set(ORANGE);
+      break;
     case IFC_MGF:
-      {
-	cur_ifc_pot = CatchParam(cur_ifc_pot, knob1_log.Process(), CATCH_THRESH);
-	new_ifc = POT_TO_VAL(cur_ifc_pot, IFC_MIN, IFC_MAX);
-	cur_mgf_pot = CatchParam(cur_mgf_pot, knob2_log.Process(), CATCH_THRESH);
-	new_mgf = POT_TO_VAL(cur_mgf_pot, MGF_MIN, MGF_MAX);
-	hw.led1.Set(BLUE);
-	break;
-      }
+      hw.led1.Set(BLUE);
+      break;
     case IFC_LFO:
-      {
-	cur_lfo_ifc_rate_pot = CatchParam(cur_lfo_ifc_rate_pot, knob1_log.Process(), CATCH_THRESH);
-	new_lfo_ifc_rate = POT_TO_VAL(cur_lfo_ifc_rate_pot, 0, LFO_RATE_MAX);
-	cur_lfo_ifc_depth_pot = CatchParam(cur_lfo_ifc_depth_pot, knob2_lin.Process(), CATCH_THRESH);
-	new_lfo_ifc_depth = POT_TO_VAL(cur_lfo_ifc_depth_pot, 0, LFO_DEPTH_MAX);
-	hw.led1.Set(LBLUE);
-	break;
-      }
+      hw.led1.Set(LBLUE);
+      break;
     case AD:
-      {
-	cur_a_pot = CatchParam(cur_a_pot, knob1_log.Process(), CATCH_THRESH);
-	new_a = POT_TO_VAL(cur_a_pot, ENV_MIN, ENV_MAX);;
-	cur_d_pot = CatchParam(cur_d_pot, knob2_log.Process(), CATCH_THRESH);
-	new_d = POT_TO_VAL(cur_d_pot, ENV_MIN, ENV_MAX);;
-	hw.led1.Set(YELLOW);
-	break;
-      }
+      hw.led1.Set(YELLOW);
+      break;
     default: break;
   } 
+
+  if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
+    new_g = inharm_g_p.Process(k1_log, cur_page); // inharmonic gain is really a modulation factor between 0 and 1
+  } else {
+    new_g = g_p.Process(k1_log, cur_page);
+  }
+  new_out = roundf(out_p.Process(k2_lin, cur_page));
+  new_stiff = stiff_p.Process(k1_log, cur_page);
+  new_beta = (int)roundf(beta_p.Process(k2_lin, cur_page));
+  new_ifc = ifc_p.Process(k1_log, cur_page);
+  new_mgf = mgf_p.Process(k2_log, cur_page);
+  new_at = at_p.Process(k1_log, cur_page);
+  new_dt = dt_p.Process(k2_log, cur_page);
+
+  new_lfo_stiff_rate = lfo_stiff_rate_p.Process(k1_log, cur_page);
+  new_lfo_stiff_depth = lfo_stiff_depth_p.Process(k2_lin, cur_page);
+  new_lfo_beta_rate = lfo_beta_rate_p.Process(k1_log, cur_page);
+  new_lfo_beta_depth = lfo_beta_depth_p.Process(k2_lin, cur_page);
+  new_lfo_ifc_rate = lfo_ifc_rate_p.Process(k1_log, cur_page);
+  new_lfo_ifc_depth = lfo_ifc_depth_p.Process(k2_lin, cur_page);
 }
 
 void SetLedMode()
@@ -451,64 +389,57 @@ void UpdateButtons()
 
 void UpdateParams() 
 {
-  if (new_lfo_ifc_rate != cur_lfo_ifc_rate) {
+  if (lfo_ifc_rate_p.Changed()) {
     lfos[LFO_IFC].SetFreq(new_lfo_ifc_rate);
-    cur_lfo_ifc_rate = new_lfo_ifc_rate;
   }
-  if (new_lfo_ifc_depth != cur_lfo_ifc_depth) {
+  if (lfo_ifc_depth_p.Changed()) {
     lfos[LFO_IFC].SetDepth(new_lfo_ifc_depth);
-    cur_lfo_ifc_depth = new_lfo_ifc_depth;
   }
   float lfo_new_ifc = CLAMP(new_ifc + lfos[LFO_IFC].GetOutput(), IFC_MIN, IFC_MAX);
 
-  if (new_lfo_stiff_rate != cur_lfo_stiff_rate) {
+  if (lfo_stiff_rate_p.Changed()) {
     lfos[LFO_STIFF].SetFreq(new_lfo_stiff_rate);
-    cur_lfo_stiff_rate = new_lfo_stiff_rate;
   }
-  if (new_lfo_stiff_depth != cur_lfo_stiff_depth) {
+  if (lfo_stiff_depth_p.Changed()) {
     lfos[LFO_STIFF].SetDepth(new_lfo_stiff_depth);
-    cur_lfo_stiff_depth = new_lfo_stiff_depth;
   }
   float lfo_new_stiff = CLAMP(new_stiff + lfos[LFO_STIFF].GetOutput(), STIFF_MIN, STIFF_MAX);
 
-  if (new_lfo_beta_rate != cur_lfo_beta_rate) {
+  if (lfo_beta_rate_p.Changed()) {
     lfos[LFO_BETA].SetFreq(new_lfo_beta_rate);
-    cur_lfo_beta_rate = new_lfo_beta_rate;
   }
-  if (new_lfo_beta_depth != cur_lfo_beta_depth) {
+  if (lfo_beta_depth_p.Changed()) {
     lfos[LFO_BETA].SetDepth(new_lfo_beta_depth);
-    cur_lfo_beta_depth = new_lfo_beta_depth;
   }
   float lfo_new_beta = CLAMP(new_beta + lfos[LFO_BETA].GetOutput(), BETA_MIN, BETA_MAX);
 
-  if (new_out != cur_out) {
+  if (out_p.Changed()) {
     cur_output_mode = (ui_output_mode)new_out;
-    cur_out = new_out;
   }
 
   for (int i = 0; i < NUM_NOTES; i++) {
 
-    if (new_a != cur_a) {
+    if (at_p.Changed()) {
       if (!env[i].IsRunning()) {
-        env[i].SetTime(ADSR_SEG_ATTACK, new_a);
+        env[i].SetTime(ADSR_SEG_ATTACK, new_at);
       }
     }
 
-    if (new_d != cur_d) {
+    if (dt_p.Changed()) {
       if (!env[i].IsRunning()) {
-        env[i].SetTime(ADSR_SEG_DECAY, new_d);
+        env[i].SetTime(ADSR_SEG_DECAY, new_dt);
       }
     }
 
     if (cur_mode == INHARM || cur_mode == INHARM_NOISE) {
-      if (new_g != cur_g) { 
+      if (inharm_g_p.Changed()) { 
         inharms[i]->modulate_g(new_g);
       } 
       if (lfo_new_ifc != cur_ifc) { 
 	inharms[i]->update_ifc(lfo_new_ifc);
       } 
     } else {
-      if (new_g != cur_g) { 
+      if (g_p.Changed()) { 
         notes[i]->update_g(new_g);
       }
       if (lfo_new_stiff != cur_stiff) { 
@@ -517,7 +448,7 @@ void UpdateParams()
       if (lfo_new_beta != cur_beta) { 
 	notes[i]->update_beta(lfo_new_beta);
       }
-      if (new_mgf != cur_mgf) { 
+      if (mgf_p.Changed()) { 
 	notes[i]->update_mgf(new_mgf);
       }
       if (lfo_new_ifc != cur_ifc) { 
@@ -525,12 +456,8 @@ void UpdateParams()
       } 
     }
   }
-  cur_a = new_a;
   cur_beta = new_beta;
-  cur_d = new_d;
-  cur_g = new_g;
   cur_ifc = new_ifc;
-  cur_mgf = new_mgf;
   cur_stiff = new_stiff;
 }
 
@@ -549,8 +476,8 @@ int main(void)
 	  inharms[i]->init(sr, 45, &inharm_presets[cur_preset]);
 
 	  env[i].Init(sr);
-      	  env[i].SetTime(ADSR_SEG_ATTACK, 0.015);
-      	  env[i].SetTime(ADSR_SEG_DECAY, 0.015);
+      	  env[i].SetTime(ADSR_SEG_ATTACK, ENV_DEFAULT);
+      	  env[i].SetTime(ADSR_SEG_DECAY, ENV_DEFAULT);
 	  env[i].SetCurve(20);
 	}
 
@@ -568,31 +495,33 @@ int main(void)
 	hw.led1.Set(PURPLE); // MIDI MODE
 	hw.led2.Set(OFF); // PING MODE
 
-	new_g = cur_g = 0.5;
-	cur_g_pot = VAL_TO_POT(new_g, GAIN_MIN, GAIN_MAX);
-	new_a = cur_a = 0.015;
-	cur_a_pot = VAL_TO_POT(new_a, ENV_MIN, ENV_MAX);
-	new_d = cur_d = 0.015;
-	cur_d_pot = VAL_TO_POT(new_d, ENV_MIN, ENV_MAX);
-	new_ifc = cur_ifc = 220; 
-	cur_ifc_pot = VAL_TO_POT(new_ifc, IFC_MIN, IFC_MAX);
-	new_stiff = cur_stiff = STIFF_MIN;
-	cur_stiff_pot = VAL_TO_POT(new_stiff, STIFF_MIN, STIFF_MAX);
-	new_beta = cur_beta = BETA_MIN;
-	cur_beta_pot = 0;
-	cur_mgf = new_mgf = 0;
-	cur_mgf_pot = VAL_TO_POT(new_mgf, MGF_MIN, MGF_MAX);
-	cur_out = new_out = cur_out_pot = 0;
+	g_p.Init(         (uint8_t)GAIN_OUT,    GAIN_DEFAULT,  GAIN_MIN,   GAIN_MAX,   PARAM_THRESH);
+	inharm_g_p.Init(  (uint8_t)GAIN_OUT,    GAIN_DEFAULT,  0.0f,       (LAST_OUTPUT - 1), PARAM_THRESH);
+	out_p.Init(       (uint8_t)GAIN_OUT,    0.0f,          0.0f,       1.0f,       PARAM_THRESH);
+	at_p.Init(        (uint8_t)AD,          ENV_DEFAULT,   ENV_MIN,    ENV_MAX,    PARAM_THRESH);
+	dt_p.Init(        (uint8_t)AD,          ENV_DEFAULT,   ENV_MIN,    ENV_MAX,    PARAM_THRESH);
+	ifc_p.Init(       (uint8_t)IFC_MGF,     IFC_DEFAULT,   IFC_MIN,    IFC_MAX,    PARAM_THRESH);
+	stiff_p.Init(     (uint8_t)STIFF_BETA,  STIFF_MIN,     STIFF_MIN,  STIFF_MAX,  PARAM_THRESH);
+	beta_p.Init(      (uint8_t)STIFF_BETA,  BETA_MIN,      BETA_MIN,   BETA_MAX,   PARAM_THRESH);
+	mgf_p.Init(       (uint8_t)IFC_MGF,     MGF_DEFAULT,   MGF_MIN,    MGF_MAX,    PARAM_THRESH);
 	
-	cur_lfo_ifc_rate = new_lfo_ifc_rate = 0.3;
-	cur_lfo_ifc_rate_pot = VAL_TO_POT(new_lfo_ifc_rate, 0, LFO_RATE_MAX); 
-	cur_lfo_ifc_depth = new_lfo_ifc_depth = cur_lfo_ifc_depth_pot = 0;
-	cur_lfo_stiff_rate = new_lfo_stiff_rate = 0.3;
-	cur_lfo_stiff_rate_pot = VAL_TO_POT(new_lfo_stiff_rate, 0, LFO_RATE_MAX); 
-	cur_lfo_stiff_depth = new_lfo_stiff_depth = cur_lfo_stiff_depth_pot = 0;
-	cur_lfo_beta_rate = new_lfo_beta_rate = 0.3;
-	cur_lfo_beta_rate_pot = VAL_TO_POT(new_lfo_beta_rate, 0, LFO_RATE_MAX); 
-	cur_lfo_beta_depth = new_lfo_beta_depth = cur_lfo_beta_depth_pot = 0;
+	lfo_ifc_rate_p.Init(     (uint8_t)IFC_LFO,    LFO_RATE_DEFAULT,  LFO_RATE_MIN,   LFO_RATE_MAX,   PARAM_THRESH);
+	lfo_ifc_depth_p.Init(    (uint8_t)IFC_LFO,    LFO_DEPTH_MIN,     LFO_DEPTH_MIN,  LFO_DEPTH_MAX,  PARAM_THRESH);
+	lfo_stiff_rate_p.Init(   (uint8_t)STIFF_LFO,  LFO_RATE_DEFAULT,  LFO_RATE_MIN,   LFO_RATE_MAX,   PARAM_THRESH);
+	lfo_stiff_depth_p.Init(  (uint8_t)STIFF_LFO,  LFO_DEPTH_MIN,     LFO_DEPTH_MIN,  LFO_DEPTH_MAX,  PARAM_THRESH);
+	lfo_beta_rate_p.Init(    (uint8_t)BETA_LFO,   LFO_RATE_DEFAULT,  LFO_RATE_MIN,   LFO_RATE_MAX,   PARAM_THRESH);
+	lfo_beta_depth_p.Init(   (uint8_t)BETA_LFO,   LFO_DEPTH_MIN,     LFO_DEPTH_MIN,  LFO_DEPTH_MAX,  PARAM_THRESH);
+
+	new_g = GAIN_DEFAULT;
+	new_at = new_dt = ENV_DEFAULT;
+	new_ifc = cur_ifc = IFC_DEFAULT; 
+	new_stiff = cur_stiff = STIFF_MIN;
+	new_beta = cur_beta = BETA_MIN;
+	new_mgf = MGF_DEFAULT;
+	new_out = 0.0f;
+	
+	new_lfo_stiff_rate = new_lfo_beta_rate = new_lfo_ifc_rate = LFO_RATE_DEFAULT;
+	new_lfo_ifc_depth = new_lfo_stiff_depth = new_lfo_beta_depth = LFO_DEPTH_MIN;
 
 	cur_page = MIDI;
 	cur_mode = PING;
