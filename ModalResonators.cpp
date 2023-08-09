@@ -29,7 +29,7 @@
 #define IFC_DEFAULT 220
 #define IFC_MIN   10
 #define IFC_MAX   22000
-#define GAIN_DEFAULT 0.5f
+#define GAIN_DEFAULT 5
 #define GAIN_MIN  0.0f
 #define STIFF_MIN 0
 #define STIFF_MAX 0.005 
@@ -541,6 +541,9 @@ int main(void)
 	hw.StartAudio(AudioCallback);
 	hw.midi.StartReceive();
 
+	// Ticks are nominally 1/200MHz = 5ns
+  	// For half a milisecond delay 5e-4/5e-9 = 1e5
+  	uint32_t dly_ticks = 100000;
 	while(1) {
 	  blink_cnt &= blink_mask;
 	  if (blink_cnt == 0) {
@@ -559,6 +562,6 @@ int main(void)
 	  UpdateEncoder();
 	  UpdateButtons();
 	  hw.UpdateLeds();
-	  hw.DelayMs(1);
+    	  hw.seed.system.DelayTicks(dly_ticks);
 	}
 }
