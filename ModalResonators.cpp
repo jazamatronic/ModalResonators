@@ -68,8 +68,8 @@
 #define CC_LFO_BETA_D	90
 
 // For distortion models
-#define INV_ARCTAN_1 1.273239544735163
-#define INV_TANH_1   1.313035285499331
+#define INV_ARCTAN_1 1.273239544735163f
+#define INV_TANH_1   1.313035285499331f
 
 using namespace daisy;
 using namespace daisysp;
