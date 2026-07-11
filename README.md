@@ -63,7 +63,7 @@ BLUE = IFC / MGF page:
 &nbsp;&nbsp;POT1 = Input Filter Cutoff = 10 to 22000Hz  
 &nbsp;&nbsp;POT2 = MGF (Brightness - boosts or cuts higher modes)
 
-LIGHT BLUE = BETA LFO:  
+LIGHT BLUE = IFC LFO:  
 &nbsp;&nbsp;POT1 = LFO Rate  
 &nbsp;&nbsp;POT2 = LFO Depth  
 

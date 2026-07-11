@@ -33,7 +33,7 @@
 #define GAIN_MIN  0.0f
 #define STIFF_MIN 0
 #define STIFF_MAX 0.005 
-#define BETA_MIN  2
+#define BETA_MIN  1
 #define BETA_MAX  5
 #define MGF_DEFAULT 0
 #define MGF_MIN	  -1

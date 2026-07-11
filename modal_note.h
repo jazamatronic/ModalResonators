@@ -7,13 +7,14 @@
 
 #define DEFAULT_GDB   0
 #define DEFAULT_STIFF 0.00001
-#define DEFAULT_BETA  2
+#define DEFAULT_BETA  1
 #define DEFAULT_MGF   0
 #define DEFAULT_IFC   10
 
 #define CLAMP(x, min, max)  ((x) > max) ? max : (((x) < min) ? min : x)
 
 #include <stdint.h>
+#include <memory>
 #include "arm_math.h"
 #include "iir_reson.h"
 #include "iir_1p_lp.h"
@@ -31,8 +32,7 @@ namespace daisysp
 class modal_note
 {
   public:
-    modal_note(int n) :n_modes_{n}, modes{new iir_reson[n]} {}
-    ~modal_note() { delete[] modes; }
+    modal_note(int n) :max_modes_{n}, n_modes_{n}, modes{new iir_reson[n]}, mode_i{new int[n]}  {}
 
     void init(float fs, float fc, float r)
     {
@@ -47,24 +47,25 @@ class modal_note
       mrf_ = 0;
 
       int calculated_modes = 0;
-      for (int i = 0; calculated_modes < n_modes_; i++) {
+      for (int i = 0; calculated_modes < max_modes_; i++) {
 
 	// skip modes defined by beta
-	if (fmod(i, beta_) == 0) continue;
-
+	if ((beta_ > 1) && (fmod(i, beta_) == 0)) continue;
+	
 	float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
 	// dont alias
 	if (mode_f > (fs_ / 2)) {
 	  calculated_modes++;
 	  break;
 	}
-
+	
 	float mode_g = g_ / pow((i + 1), mgf_);
-
+	
 	float mode_r = r_ - i * mrf_;
 	if (mode_r < 0) mode_r = 0;
-
+	
 	modes[calculated_modes].init(fs_, mode_f, CLAMP(mode_r, 0, RES_MAX), mode_g);
+	mode_i[calculated_modes] = i;
 	calculated_modes++;
       }
       n_modes_ = calculated_modes;
@@ -89,17 +90,17 @@ class modal_note
 	fc_ = fc;
 
 	int calculated_modes = 0;
-      	for (int i = 0; calculated_modes < n_modes_; i++) {
+      	for (int i = 0; calculated_modes < max_modes_; i++) {
 
       	  // skip modes defined by beta
-      	  if (fmod(i, beta_) == 0) continue;
+	if ((beta_ > 1) && (fmod(i, beta_) == 0)) continue;
 
       	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
 
       	  // dont alias
       	  if (mode_f > (fs_ / 2)) {
 	    calculated_modes++;
-  	    break;
+	    break;
 	  }
 
       	  modes[calculated_modes].update_fc(mode_f);
@@ -118,7 +119,7 @@ class modal_note
         for (int i = 0; calculated_modes < n_modes_; i++) {
   
 	  // skip modes defined by beta
-  	  if (fmod(i, beta_) == 0) continue;
+	  if ((beta_ > 1) && (fmod(i, beta_) == 0)) continue;
   
   	  float mode_r = r_ - i * mrf_;
   	  if (mode_r < 0) mode_r = 0;
@@ -133,17 +134,7 @@ class modal_note
       if (g != g_) {
 	g_ = g;
 
-	int calculated_modes = 0;
-      	for (int i = 0; calculated_modes < n_modes_; i++) {
-
-      	  // skip modes defined by beta
-      	  if (fmod(i, beta_) == 0) continue;
-
-	  float mode_g = g_ / pow((i + 1), mgf_);
-
-      	  modes[calculated_modes].update_g(mode_g);
-      	  calculated_modes++;
-      	}
+        recompute_gains();
       }
     }
 
@@ -153,10 +144,10 @@ class modal_note
 	stiffness_ = stiffness;
 
 	int calculated_modes = 0;
-	for (int i = 0; calculated_modes < n_modes_; i++) {
+	for (int i = 0; calculated_modes < max_modes_; i++) {
   
 	  // skip modes defined by beta
-  	  if (fmod(i, beta_) == 0) continue;
+	  if ((beta_ > 1) && (fmod(i, beta_) == 0)) continue;
   	  
   	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
   	  // dont alias
@@ -178,10 +169,10 @@ class modal_note
 	beta_ = beta;
 
 	int calculated_modes = 0;
-      	for (int i = 0; calculated_modes < n_modes_; i++) {
+      	for (int i = 0; calculated_modes < max_modes_; i++) {
 
       	  // skip modes defined by beta
-      	  if (fmod(i, beta_) == 0) continue;
+	  if ((beta_ > 1) && (fmod(i, beta_) == 0)) continue;
 
       	  float mode_f = (i + 1) * fc_ * sqrt(1 + stiffness_ * pow(i, 2));  
 
@@ -192,9 +183,11 @@ class modal_note
 	  }
 
       	  modes[calculated_modes].update_fc(mode_f);
+          mode_i[calculated_modes] = i;
       	  calculated_modes++;
       	}
 	n_modes_ = calculated_modes;
+        recompute_gains();
       }
     }
 
@@ -205,16 +198,7 @@ class modal_note
       if (mgf != mgf_) {
 	mgf_ = mgf;
 
-	int calculated_modes = 0;
-      	for (int i = 0; calculated_modes < n_modes_; i++) {
-
-      	  // skip modes defined by beta
-      	  if (fmod(i, beta_) == 0) continue;
-
-      	  float mode_g = g_ / pow((i + 1), mgf_);
-      	  modes[calculated_modes].update_g(mode_g);
-      	  calculated_modes++;
-      	}
+        recompute_gains();
       }
     }
 
@@ -228,11 +212,25 @@ class modal_note
      */
 
   private:
+    const int max_modes_;
     int n_modes_;
-    iir_reson *modes;
+    std::unique_ptr<iir_reson[]> modes;
+    std::unique_ptr<int[]> mode_i;
     iir_1p_lp input_filt;
     float fs_, fc_, r_, gdb_, g_, stiffness_, mgf_, mrf_;
     int beta_;
+
+    void recompute_gains() {
+
+      int i, n;
+
+      for (i = 0; i < n_modes_; i++) {
+        n = mode_i[i] + 1;
+	float mode_g = g_ / pow(n, mgf_);
+        modes[i].update_g(mode_g);
+      }
+
+    }
 
 };
 } // namespace daisysp
