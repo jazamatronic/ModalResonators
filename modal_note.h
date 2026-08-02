@@ -6,6 +6,7 @@
 #define RES_MAX 0.99999
 
 #define DEFAULT_GDB   0
+#define DEFAULT_POS   0.1
 #define DEFAULT_STIFF 0.00001
 #define DEFAULT_BETA  1
 #define DEFAULT_MGF   0
@@ -41,6 +42,7 @@ class modal_note
       r_ = r;
       gdb_ = DEFAULT_GDB;
       g_ = powf(10, gdb_ / 20.0);
+      pos_ = DEFAULT_POS;
       stiffness_ = DEFAULT_STIFF;
       beta_ = DEFAULT_BETA;
       mgf_ = DEFAULT_MGF;
@@ -58,8 +60,10 @@ class modal_note
 	  calculated_modes++;
 	  break;
 	}
-	
-	float mode_g = g_ / pow((i + 1), mgf_);
+
+        // do this in recompute_gains now we have position based gains
+	//float mode_g = g_ / pow((i + 1), mgf_);
+	float mode_g = 0.0f;
 	
 	float mode_r = r_ - i * mrf_;
 	if (mode_r < 0) mode_r = 0;
@@ -69,6 +73,7 @@ class modal_note
 	calculated_modes++;
       }
       n_modes_ = calculated_modes;
+      recompute_gains();
 
       input_filt.init(fs_, DEFAULT_IFC);
     }
@@ -104,9 +109,11 @@ class modal_note
 	  }
 
       	  modes[calculated_modes].update_fc(mode_f);
+          mode_i[calculated_modes] = i;
       	  calculated_modes++;
       	}
 	n_modes_ = calculated_modes;
+        recompute_gains();
       }
     }
 
@@ -138,6 +145,15 @@ class modal_note
       }
     }
 
+    void update_pos(float pos)
+    {
+      if (pos != pos_) {
+	pos_ = pos;
+
+        recompute_gains();
+      }
+    }
+
     void update_stiffness(float stiffness)
     {
       if (stiffness != stiffness_) {
@@ -157,9 +173,11 @@ class modal_note
 	  }
 
       	  modes[calculated_modes].update_fc(mode_f);
+          mode_i[calculated_modes] = i;
       	  calculated_modes++;
 	}
 	n_modes_ = calculated_modes;
+        recompute_gains();
       }
     }
 
@@ -217,16 +235,18 @@ class modal_note
     std::unique_ptr<iir_reson[]> modes;
     std::unique_ptr<int[]> mode_i;
     iir_1p_lp input_filt;
-    float fs_, fc_, r_, gdb_, g_, stiffness_, mgf_, mrf_;
+    float fs_, fc_, r_, gdb_, g_, pos_, stiffness_, mgf_, mrf_;
     int beta_;
 
     void recompute_gains() {
 
       int i, n;
+      float p;
 
       for (i = 0; i < n_modes_; i++) {
         n = mode_i[i] + 1;
-	float mode_g = g_ / pow(n, mgf_);
+        p = sinf(n * PI * pos_); // strik position modelling
+	float mode_g = g_ * p / pow(n, mgf_);
         modes[i].update_g(mode_g);
       }
 
