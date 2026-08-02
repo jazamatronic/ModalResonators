@@ -6,75 +6,8 @@
 #include "led_colours.h"
 #include "tri_lfo.h"
 #include "PagedParam.h"
+#include "modal_defs.h"
 #include <cstdint>
-
-#define NUM_HARM_PARTIALS   4
-#define NUM_NOTES	    5
-
-#define NUM_LFOS      3
-#define LFO_RATE_DEFAULT 0.3
-#define LFO_RATE_MIN  0
-#define LFO_RATE_MAX  60
-#define LFO_DEPTH_MIN 0.0f
-#define LFO_DEPTH_MAX 1.0f
-#define LFO_IFC	      0
-#define LFO_STIFF     1
-#define LFO_BETA      2
-
-#define PING_AMT      	    1 //0.25 
-
-#define PARAM_THRESH	  0.05f
-
-#define RES_MIN	  0.99333
-#define RES_MAX   0.99999
-#define IFC_DEFAULT 220
-#define IFC_MIN   10
-#define IFC_MAX   22000
-#define GAIN_DEFAULT 5
-#define GAIN_MIN  0.0f
-#define POS_DEFAULT 0.1f
-#define POS_MIN 0.02f
-#define POS_MAX 0.98f
-#define STIFF_MIN 0
-#define STIFF_MAX 0.005 
-#define BETA_MIN  1
-#define BETA_MAX  5
-#define MGF_DEFAULT 0
-#define MGF_MIN	  -1
-#define MGF_MAX   3
-#define ENV_DEFAULT 0.015
-#define ENV_MIN	  0.001
-#define ENV_MAX	  0.1
-
-
-#define SGN(x)		    (signbit(x) ? -1.0 : 1.0)
-
-#define CC_TO_VAL(x, min, max) (min + (x / 127.0f) * (max - min))
-#define POT_TO_VAL(x, min, max) (min + x * (max - min))
-#define VAL_TO_POT(x, min, max) ((x - min) / (max - min))
-
-#define MIDI_CHANNEL	0 // todo - make this settable somehow. Daisy starts counting MIDI channels from 0
-#define CC_MOD	       	1
-#define CC_GAIN       	7
-#define	CC_IFC		14
-#define CC_STIFF      	70
-#define CC_BETA       	71
-#define CC_REL        	72
-#define CC_ATK        	73
-#define CC_MGF	       	74
-#define CC_MODE		75
-#define CC_INHARM	76
-#define CC_POS	        77
-#define CC_LFO_IFC_R  	85
-#define CC_LFO_IFC_D  	86
-#define CC_LFO_STIFF_R	87
-#define CC_LFO_STIFF_D	88
-#define CC_LFO_BETA_R	89
-#define CC_LFO_BETA_D	90
-
-// For distortion models
-#define INV_ARCTAN_1 1.273239544735163f
-#define INV_TANH_1   1.313035285499331f
 
 using namespace daisy;
 using namespace daisysp;
@@ -94,9 +27,9 @@ int  blink_cnt = 0;
 bool led_state = true;
 
 static Parameter knob1_lin, knob1_log, knob2_lin, knob2_log;
-PagedParam ifc_p, g_p, inharm_g_p, pos_p, stiff_p, beta_p, mgf_p, mrf_p, out_p, at_p, dt_p;
+PagedParam ifc_p, g_p, inharm_g_p, pos_p, width_p, stiff_p, beta_p, mgf_p, mrf_p, out_p, at_p, dt_p;
 PagedParam lfo_ifc_rate_p, lfo_ifc_depth_p, lfo_stiff_rate_p, lfo_stiff_depth_p, lfo_beta_rate_p, lfo_beta_depth_p;
-float new_ifc, new_g, new_pos, new_stiff, new_beta, new_mgf, new_mrf, new_out, new_at, new_dt;
+float new_ifc, new_g, new_pos, new_width, new_stiff, new_beta, new_mgf, new_mrf, new_out, new_at, new_dt;
 float new_lfo_ifc_rate, new_lfo_ifc_depth, new_lfo_stiff_rate, new_lfo_stiff_depth, new_lfo_beta_rate, new_lfo_beta_depth;
 float cur_beta, cur_ifc, cur_stiff;
 
@@ -105,7 +38,7 @@ float midi_v = 0;
 int next_note = 0;
 bool play_note = false;
 
-typedef enum {MIDI = 0, GAIN_OUT, POS, STIFF_BETA, STIFF_LFO, BETA_LFO, IFC_MGF, IFC_LFO, AD, LAST_PAGE} ui_page;
+typedef enum {MIDI = 0, GAIN_OUT, POS_WIDTH, STIFF_BETA, STIFF_LFO, BETA_LFO, IFC_MGF, IFC_LFO, AD, LAST_PAGE} ui_page;
 ui_page cur_page = MIDI;
 typedef enum {PING = 0, NOISE_ENV, EXT, EXT_ENV, INHARM, INHARM_NOISE, LAST_MODE} ui_mode;
 ui_mode cur_mode = PING;
@@ -257,6 +190,9 @@ void HandleMidiMessage(MidiEvent m) {
             case CC_POS:
               new_pos = pos_p.MidiCCIn(p.value);
               break;
+            case CC_WIDTH:
+              new_width = width_p.MidiCCIn(p.value);
+              break;
 	    case CC_LFO_IFC_R:
 	      new_lfo_ifc_rate = lfo_ifc_rate_p.MidiCCIn(p.value);
 	      break;
@@ -291,7 +227,8 @@ void UpdateEncoder()
 
   //float k1_lin, k1_log, k2_lin, k2_log;
   //k1_lin = knob1_lin.Process();
-  float k1_log, k2_lin, k2_log;
+  float k1_lin, k1_log, k2_lin, k2_log;
+  k1_lin = knob1_lin.Process();
   k1_log = knob1_log.Process();
   k2_lin = knob2_lin.Process();
   k2_log = knob2_log.Process();
@@ -307,7 +244,7 @@ void UpdateEncoder()
     case GAIN_OUT:
       hw.led1.Set(RED);
       break;
-    case POS:
+    case POS_WIDTH:
       hw.led1.Set(CYAN);
       break;
     case STIFF_BETA:
@@ -338,6 +275,7 @@ void UpdateEncoder()
   }
   new_out = roundf(out_p.Process(k2_lin, cur_page));
   new_pos = pos_p.Process(k2_lin, cur_page);
+  new_width = width_p.Process(k1_lin, cur_page);
   new_stiff = stiff_p.Process(k1_log, cur_page);
   new_beta = (int)roundf(beta_p.Process(k2_lin, cur_page));
   new_ifc = ifc_p.Process(k1_log, cur_page);
@@ -460,6 +398,9 @@ void UpdateParams()
       if (pos_p.Changed()) { 
         notes[i]->update_pos(new_pos);
       }
+      if (width_p.Changed()) { 
+        notes[i]->update_width(new_width);
+      }
       if (lfo_new_stiff != cur_stiff) { 
         notes[i]->update_stiffness(lfo_new_stiff);
       }
@@ -519,7 +460,8 @@ int main(void)
 	at_p.Init(        (uint8_t)AD,          ENV_DEFAULT,   ENV_MIN,    ENV_MAX,    PARAM_THRESH);
 	dt_p.Init(        (uint8_t)AD,          ENV_DEFAULT,   ENV_MIN,    ENV_MAX,    PARAM_THRESH);
 	ifc_p.Init(       (uint8_t)IFC_MGF,     IFC_DEFAULT,   IFC_MIN,    IFC_MAX,    PARAM_THRESH);
-        pos_p.Init(       (uint8_t)POS,         POS_DEFAULT,   POS_MIN,    POS_MAX,    PARAM_THRESH);
+        pos_p.Init(       (uint8_t)POS_WIDTH,   POS_DEFAULT,   POS_MIN,    POS_MAX,    PARAM_THRESH);
+        width_p.Init(     (uint8_t)POS_WIDTH,   WIDTH_DEFAULT, WIDTH_MIN,  WIDTH_MAX,  PARAM_THRESH);
 	stiff_p.Init(     (uint8_t)STIFF_BETA,  STIFF_MIN,     STIFF_MIN,  STIFF_MAX,  PARAM_THRESH);
 	beta_p.Init(      (uint8_t)STIFF_BETA,  BETA_MIN,      BETA_MIN,   BETA_MAX,   PARAM_THRESH);
 	mgf_p.Init(       (uint8_t)IFC_MGF,     MGF_DEFAULT,   MGF_MIN,    MGF_MAX,    PARAM_THRESH);
@@ -535,6 +477,7 @@ int main(void)
 	new_at = new_dt = ENV_DEFAULT;
 	new_ifc = cur_ifc = IFC_DEFAULT; 
         new_pos = POS_DEFAULT;
+        new_width = WIDTH_DEFAULT;
 	new_stiff = cur_stiff = STIFF_MIN;
 	new_beta = cur_beta = BETA_MIN;
 	new_mgf = MGF_DEFAULT;

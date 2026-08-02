@@ -2,12 +2,7 @@
 #ifndef DSY_MODAL_INHARM_H
 #define DSY_MODAL_INHARM_H
 
-// Maximum resonance - let's try and keep things stable
-#define RES_MAX 0.99999
-
-#define DEFAULT_POS 0.1
-
-#define GAIN_MAX  10.0f
+#include "modal_defs.h"
 
 #include <stdint.h>
 #include "arm_math.h"
@@ -35,7 +30,7 @@ class modal_inharm
     {
       fs_ = fs;
       fc_ = fc;
-      pos_ = DEFAULT_POS;
+      pos_ = POS_DEFAULT;
       n_modes_ = preset->num_modes;
 
       for (int i = 0; i < n_modes_; i++) {
@@ -62,7 +57,7 @@ class modal_inharm
       }
       recompute_gains();
 
-      input_filt.init(fs_, DEFAULT_IFC);
+      input_filt.init(fs_, INPUT_FILT_IFC_DEFAULT);
     }
 
     void load_preset(inharm_preset *preset)

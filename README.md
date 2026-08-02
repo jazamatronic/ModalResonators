@@ -37,6 +37,7 @@ MAGENTA = MIDI page:
 &nbsp;&nbsp;CC 75 = Mode  
 &nbsp;&nbsp;CC 76 = Inharmonic Preset  
 &nbsp;&nbsp;CC 77 = Strike Position  
+&nbsp;&nbsp;CC 78 = Strike Width (harmonic voice only - no effect in INHARM/INHARM_NOISE mode)  
 &nbsp;&nbsp;CC 85 = IFC LFO Rate  
 &nbsp;&nbsp;CC 86 = IFC LFO Depth  
 &nbsp;&nbsp;CC 87 = Stiffness LFO Rate  
@@ -48,8 +49,8 @@ RED = Gain / Overdrive page:
 &nbsp;&nbsp;POT1 = Gain  
 &nbsp;&nbsp;POT2 = Overdrive model - hard clipping, exponential distortion, tanh distortion, arctan distortion    
   
-CYAN = Strike Position page:  
-&nbsp;&nbsp;POT1 = unused (reserved)  
+CYAN = Strike Position / Width page:  
+&nbsp;&nbsp;POT1 = Strike Width - mallet/hammer contact size, 0.0 (point strike) to 0.3. Progressively dulls higher harmonics as it increases. Only affects the harmonic voice (PING/NOISE_ENV/EXT/EXT_ENV) - has no effect in INHARM/INHARM_NOISE mode  
 &nbsp;&nbsp;POT2 = Strike Position - where along the modelled string/bar the strike lands, 0.0 to 1.0. Nulls harmonics at their nodes; avoid 0.5 with beta = 2 (or other position/beta combinations that null the same harmonics) or the note goes silent  
   
 GREEN = Stiffness / Beta page:  

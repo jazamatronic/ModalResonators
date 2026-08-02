@@ -2,17 +2,7 @@
 #ifndef DSY_MODAL_NOTE_H
 #define DSY_MODAL_NOTE_H
 
-// Maximum resonance - let's try and keep things stable
-#define RES_MAX 0.99999
-
-#define DEFAULT_GDB   0
-#define DEFAULT_POS   0.1
-#define DEFAULT_STIFF 0.00001
-#define DEFAULT_BETA  1
-#define DEFAULT_MGF   0
-#define DEFAULT_IFC   10
-
-#define CLAMP(x, min, max)  ((x) > max) ? max : (((x) < min) ? min : x)
+#include "modal_defs.h"
 
 #include <stdint.h>
 #include <memory>
@@ -40,12 +30,13 @@ class modal_note
       fs_ = fs;
       fc_ = fc;
       r_ = r;
-      gdb_ = DEFAULT_GDB;
+      gdb_ = GDB_DEFAULT;
       g_ = powf(10, gdb_ / 20.0);
-      pos_ = DEFAULT_POS;
-      stiffness_ = DEFAULT_STIFF;
-      beta_ = DEFAULT_BETA;
-      mgf_ = DEFAULT_MGF;
+      pos_ = POS_DEFAULT;
+      width_ = WIDTH_DEFAULT;
+      stiffness_ = STIFF_DEFAULT;
+      beta_ = BETA_DEFAULT;
+      mgf_ = MGF_DEFAULT;
       mrf_ = 0;
 
       int calculated_modes = 0;
@@ -75,7 +66,7 @@ class modal_note
       n_modes_ = calculated_modes;
       recompute_gains();
 
-      input_filt.init(fs_, DEFAULT_IFC);
+      input_filt.init(fs_, INPUT_FILT_IFC_DEFAULT);
     }
 
     float Process(float in)
@@ -154,6 +145,15 @@ class modal_note
       }
     }
 
+    void update_width(float width)
+    {
+      if (width != width_) {
+	width_ = width;
+
+        recompute_gains();
+      }
+    }
+
     void update_stiffness(float stiffness)
     {
       if (stiffness != stiffness_) {
@@ -209,8 +209,6 @@ class modal_note
       }
     }
 
-
-
     void update_mgf(float mgf)
     {
       if (mgf != mgf_) {
@@ -235,18 +233,24 @@ class modal_note
     std::unique_ptr<iir_reson[]> modes;
     std::unique_ptr<int[]> mode_i;
     iir_1p_lp input_filt;
-    float fs_, fc_, r_, gdb_, g_, pos_, stiffness_, mgf_, mrf_;
+    float fs_, fc_, r_, gdb_, g_, pos_, width_, stiffness_, mgf_, mrf_;
     int beta_;
+
+    float sinc(float x)
+    {
+      return (x == 0.0f) ? 1.0f : sinf(x) / x;
+    }
 
     void recompute_gains() {
 
       int i, n;
-      float p;
+      float p, w;
 
       for (i = 0; i < n_modes_; i++) {
         n = mode_i[i] + 1;
-        p = sinf(n * PI * pos_); // strik position modelling
-	float mode_g = g_ * p / pow(n, mgf_);
+        p = sinf(n * PI * pos_); // strike position modelling
+        w = sinc(n * PI * width_ / 2); // strike width modelling
+	float mode_g = g_ * p * w / pow(n, mgf_);
         modes[i].update_g(mode_g);
       }
 
