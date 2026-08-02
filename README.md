@@ -21,7 +21,7 @@ Stereo output is provided.
 
 Five note polyphony where each note consists of four "modes" or "partials".  
 
-There are four pages of menu accessible via the encoder. LED1 shows Magenta, Red, Green and Blue respectively.
+There are nine pages of menu accessible via the encoder. LED1 shows Magenta, Red, Cyan, Green, Light Green, Orange, Blue, Light Blue and Yellow respectively.
 
 MAGENTA = MIDI page:  
 &nbsp;&nbsp;No pots are active, MIDI control on Channel 1.  
@@ -30,12 +30,13 @@ MAGENTA = MIDI page:
 &nbsp;&nbsp;CC 7 (Volume) = gain  
 &nbsp;&nbsp;CC 14 = Input Filter Cutoff (IFC)  
 &nbsp;&nbsp;CC 70 = stiffness  
-&nbsp;&nbsp;CC 71 = beta (harmonics control)  
+&nbsp;&nbsp;CC 71 = beta (harmonics control - decimates the harmonic series; beta = 1 plays every harmonic including the fundamental)  
 &nbsp;&nbsp;CC 72 = attack time for envelope modes
 &nbsp;&nbsp;CC 73 = decay time for envelope modes
 &nbsp;&nbsp;CC 74 = MGF (mode gain factor)  
 &nbsp;&nbsp;CC 75 = Mode  
 &nbsp;&nbsp;CC 76 = Inharmonic Preset  
+&nbsp;&nbsp;CC 77 = Strike Position  
 &nbsp;&nbsp;CC 85 = IFC LFO Rate  
 &nbsp;&nbsp;CC 86 = IFC LFO Depth  
 &nbsp;&nbsp;CC 87 = Stiffness LFO Rate  
@@ -46,6 +47,10 @@ MAGENTA = MIDI page:
 RED = Gain / Overdrive page:  
 &nbsp;&nbsp;POT1 = Gain  
 &nbsp;&nbsp;POT2 = Overdrive model - hard clipping, exponential distortion, tanh distortion, arctan distortion    
+  
+CYAN = Strike Position page:  
+&nbsp;&nbsp;POT1 = unused (reserved)  
+&nbsp;&nbsp;POT2 = Strike Position - where along the modelled string/bar the strike lands, 0.0 to 1.0. Nulls harmonics at their nodes; avoid 0.5 with beta = 2 (or other position/beta combinations that null the same harmonics) or the note goes silent  
   
 GREEN = Stiffness / Beta page:  
 &nbsp;&nbsp;POT1 = Stiffness (spreads higher modes)  
